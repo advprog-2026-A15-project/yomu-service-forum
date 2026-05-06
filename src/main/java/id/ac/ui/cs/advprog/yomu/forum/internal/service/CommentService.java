@@ -16,7 +16,11 @@ public interface CommentService {
 
 	CommentUpdatedEvent updateComment(String commentId, String commentContent);
 
+	CommentUpdatedEvent updateComment(String commentId, String commentContent, String userId, String role);
+
 	CommentDeletedEvent deleteComment(String commentId);
+
+	CommentDeletedEvent deleteComment(String commentId, String userId, String role);
 
 	void addReaction(String commentId, String reactionType);
 

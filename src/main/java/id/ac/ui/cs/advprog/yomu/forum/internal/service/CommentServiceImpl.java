@@ -86,10 +86,60 @@ public class CommentServiceImpl implements CommentService {
 
 	@Override
 	@Transactional
+	public CommentUpdatedEvent updateComment(String commentId, String commentContent, String userId, String role) {
+		Comment existingComment = getCommentOrThrow(commentId);
+		
+		// Authorization: only Admin or comment author can update
+		if (!"ADMIN".equals(role) && !existingComment.getUserId().equals(userId)) {
+			throw new ResponseStatusException(HttpStatus.FORBIDDEN, 
+				"Hanya admin atau penulis komentar yang bisa mengedit komentar ini");
+		}
+
+		Instant timestamp = clock.instant();
+		commentRepository.updateContentById(commentId, commentContent);
+
+		CommentUpdatedEvent event = new CommentUpdatedEvent(
+				existingComment.getUserId(),
+				existingComment.getBacaanId(),
+				existingComment.getParentComment(),
+				commentId,
+				commentContent,
+				timestamp);
+		rabbitTemplate.convertAndSend("yomu.comment.updated", event);
+		return event;
+	}
+
+	@Override
+	@Transactional
 	public CommentDeletedEvent deleteComment(String commentId) {
 		Comment existingComment = getCommentOrThrow(commentId);
 		Instant timestamp = clock.instant();
 
+		commentRepository.deleteById(commentId);
+
+		CommentDeletedEvent event = new CommentDeletedEvent(
+				existingComment.getUserId(),
+				existingComment.getBacaanId(),
+				existingComment.getParentComment(),
+				existingComment.getId(),
+				existingComment.getContent(),
+				timestamp);
+		rabbitTemplate.convertAndSend("yomu.comment.deleted", event);
+		return event;
+	}
+
+	@Override
+	@Transactional
+	public CommentDeletedEvent deleteComment(String commentId, String userId, String role) {
+		Comment existingComment = getCommentOrThrow(commentId);
+		
+		// Authorization: only Admin or comment author can delete
+		if (!"ADMIN".equals(role) && !existingComment.getUserId().equals(userId)) {
+			throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+				"Hanya admin atau penulis komentar yang bisa menghapus komentar ini");
+		}
+
+		Instant timestamp = clock.instant();
 		commentRepository.deleteById(commentId);
 
 		CommentDeletedEvent event = new CommentDeletedEvent(

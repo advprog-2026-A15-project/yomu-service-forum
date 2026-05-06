@@ -9,6 +9,8 @@ import id.ac.ui.cs.advprog.yomu.forum.internal.service.CommentTreeResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -55,13 +57,25 @@ public class CommentController {
 	@PutMapping("/{commentId}")
 	public CommentUpdatedEvent updateComment(
 		@PathVariable String commentId,
-		@Valid @RequestBody UpdateCommentRequest request
+		@Valid @RequestBody UpdateCommentRequest request,
+		Authentication auth
 	) {
-		return commentService.updateComment(commentId, request.commentContent());
+		String userId = auth != null ? (String) auth.getCredentials() : null;
+		String role = auth != null ? auth.getAuthorities().stream()
+			.map(a -> a.getAuthority().replace("ROLE_", ""))
+			.findFirst().orElse(null) : null;
+		return commentService.updateComment(commentId, request.commentContent(), userId, role);
 	}
 
 	@DeleteMapping("/{commentId}")
-	public CommentDeletedEvent deleteComment(@PathVariable String commentId) {
-		return commentService.deleteComment(commentId);
+	public CommentDeletedEvent deleteComment(
+		@PathVariable String commentId,
+		Authentication auth
+	) {
+		String userId = auth != null ? (String) auth.getCredentials() : null;
+		String role = auth != null ? auth.getAuthorities().stream()
+			.map(a -> a.getAuthority().replace("ROLE_", ""))
+			.findFirst().orElse(null) : null;
+		return commentService.deleteComment(commentId, userId, role);
 	}
 }
