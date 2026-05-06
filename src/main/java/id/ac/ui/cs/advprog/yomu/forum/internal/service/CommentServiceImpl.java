@@ -5,7 +5,7 @@ import id.ac.ui.cs.advprog.yomu.shared.event.CommentDeletedEvent;
 import id.ac.ui.cs.advprog.yomu.shared.event.CommentUpdatedEvent;
 import id.ac.ui.cs.advprog.yomu.forum.internal.model.Comment;
 import id.ac.ui.cs.advprog.yomu.forum.internal.repository.CommentRepository;
-import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -24,15 +24,15 @@ import java.util.Map;
 public class CommentServiceImpl implements CommentService {
 
 	private final CommentRepository commentRepository;
-	private final ApplicationEventPublisher eventPublisher;
+	private final RabbitTemplate rabbitTemplate;
 	private final Clock clock;
 
 	public CommentServiceImpl(
 			CommentRepository commentRepository,
-			ApplicationEventPublisher eventPublisher,
+			RabbitTemplate rabbitTemplate,
 			Clock clock) {
 		this.commentRepository = commentRepository;
-		this.eventPublisher = eventPublisher;
+		this.rabbitTemplate = rabbitTemplate;
 		this.clock = clock;
 	}
 
@@ -61,7 +61,7 @@ public class CommentServiceImpl implements CommentService {
 				savedComment.getId(),
 				savedComment.getContent(),
 				timestamp);
-		eventPublisher.publishEvent(event);
+		rabbitTemplate.convertAndSend("yomu.comment.created", event);
 		return event;
 	}
 
@@ -80,7 +80,7 @@ public class CommentServiceImpl implements CommentService {
 				commentId,
 				commentContent,
 				timestamp);
-		eventPublisher.publishEvent(event);
+		rabbitTemplate.convertAndSend("yomu.comment.updated", event);
 		return event;
 	}
 
@@ -99,8 +99,15 @@ public class CommentServiceImpl implements CommentService {
 				existingComment.getId(),
 				existingComment.getContent(),
 				timestamp);
-		eventPublisher.publishEvent(event);
+		rabbitTemplate.convertAndSend("yomu.comment.deleted", event);
 		return event;
+	}
+
+	@Override
+	@Transactional
+	public void addReaction(String commentId, String reactionType) {
+		getCommentOrThrow(commentId);
+		commentRepository.addReaction(commentId, reactionType);
 	}
 
 	@Override
@@ -151,7 +158,14 @@ public class CommentServiceImpl implements CommentService {
 				comment.getBacaanId(),
 				comment.getParentComment(),
 				comment.getContent(),
-				comment.getCreatedAt().atZone(clock.getZone()).toInstant());
+				comment.getCreatedAt().atZone(clock.getZone()).toInstant(),
+				comment.getUpvotes(),
+				comment.getDownvotes(),
+				comment.getReactionThumbsUp(),
+				comment.getReactionHeart(),
+				comment.getReactionLaugh(),
+				comment.getReactionSurprise(),
+				comment.getReactionSad());
 	}
 
 	private CommentTreeResponse toTreeResponse(MutableTreeNode node) {
@@ -162,6 +176,13 @@ public class CommentServiceImpl implements CommentService {
 				node.comment.getParentComment(),
 				node.comment.getContent(),
 				node.comment.getCreatedAt().atZone(clock.getZone()).toInstant(),
+				node.comment.getUpvotes(),
+				node.comment.getDownvotes(),
+				node.comment.getReactionThumbsUp(),
+				node.comment.getReactionHeart(),
+				node.comment.getReactionLaugh(),
+				node.comment.getReactionSurprise(),
+				node.comment.getReactionSad(),
 				node.children.stream().map(this::toTreeResponse).toList());
 	}
 

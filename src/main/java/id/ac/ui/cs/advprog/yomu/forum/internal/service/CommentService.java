@@ -18,6 +18,8 @@ public interface CommentService {
 
 	CommentDeletedEvent deleteComment(String commentId);
 
+	void addReaction(String commentId, String reactionType);
+
 	List<CommentResponse> listComments(String bacaanId);
 
 	List<CommentTreeResponse> listCommentsTree(String bacaanId);

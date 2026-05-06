@@ -25,6 +25,13 @@ public class JdbcCommentRepository implements CommentRepository {
         );
         comment.setId(rs.getString("id"));
         comment.setCreatedAt(rs.getTimestamp("created_at").toLocalDateTime());
+        comment.setUpvotes(rs.getInt("upvotes"));
+        comment.setDownvotes(rs.getInt("downvotes"));
+        comment.setReactionThumbsUp(rs.getInt("reaction_thumbs_up"));
+        comment.setReactionHeart(rs.getInt("reaction_heart"));
+        comment.setReactionLaugh(rs.getInt("reaction_laugh"));
+        comment.setReactionSurprise(rs.getInt("reaction_surprise"));
+        comment.setReactionSad(rs.getInt("reaction_sad"));
         return comment;
     };
 
@@ -43,10 +50,23 @@ public class JdbcCommentRepository implements CommentRepository {
                 bacaan_id VARCHAR(255) NOT NULL,
                 parent_comment VARCHAR(255) NOT NULL DEFAULT 'root',
                 content TEXT NOT NULL,
-                created_at TIMESTAMP NOT NULL
+                created_at TIMESTAMP NOT NULL,
+                upvotes INTEGER NOT NULL DEFAULT 0,
+                downvotes INTEGER NOT NULL DEFAULT 0,
+                reaction_thumbs_up INTEGER NOT NULL DEFAULT 0,
+                reaction_heart INTEGER NOT NULL DEFAULT 0,
+                reaction_laugh INTEGER NOT NULL DEFAULT 0,
+                reaction_surprise INTEGER NOT NULL DEFAULT 0,
+                reaction_sad INTEGER NOT NULL DEFAULT 0
             )
             """);
-        jdbcTemplate.execute("ALTER TABLE comments ADD COLUMN IF NOT EXISTS parent_comment VARCHAR(255) NOT NULL DEFAULT 'root'");
+        jdbcTemplate.execute("ALTER TABLE comments ADD COLUMN IF NOT EXISTS upvotes INTEGER NOT NULL DEFAULT 0");
+        jdbcTemplate.execute("ALTER TABLE comments ADD COLUMN IF NOT EXISTS downvotes INTEGER NOT NULL DEFAULT 0");
+        jdbcTemplate.execute("ALTER TABLE comments ADD COLUMN IF NOT EXISTS reaction_thumbs_up INTEGER NOT NULL DEFAULT 0");
+        jdbcTemplate.execute("ALTER TABLE comments ADD COLUMN IF NOT EXISTS reaction_heart INTEGER NOT NULL DEFAULT 0");
+        jdbcTemplate.execute("ALTER TABLE comments ADD COLUMN IF NOT EXISTS reaction_laugh INTEGER NOT NULL DEFAULT 0");
+        jdbcTemplate.execute("ALTER TABLE comments ADD COLUMN IF NOT EXISTS reaction_surprise INTEGER NOT NULL DEFAULT 0");
+        jdbcTemplate.execute("ALTER TABLE comments ADD COLUMN IF NOT EXISTS reaction_sad INTEGER NOT NULL DEFAULT 0");
     }
 
     @Override
@@ -58,14 +78,24 @@ public class JdbcCommentRepository implements CommentRepository {
             comment.setCreatedAt(LocalDateTime.now());
         }
 
-        jdbcTemplate.update(
-            "INSERT INTO comments (id, user_id, bacaan_id, parent_comment, content, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        jdbcTemplate.update("""
+            INSERT INTO comments (id, user_id, bacaan_id, parent_comment, content, created_at, 
+                upvotes, downvotes, reaction_thumbs_up, reaction_heart, reaction_laugh, reaction_surprise, reaction_sad) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
             comment.getId(),
             comment.getUserId(),
             comment.getBacaanId(),
             comment.getParentComment(),
             comment.getContent(),
-            Timestamp.valueOf(comment.getCreatedAt())
+            Timestamp.valueOf(comment.getCreatedAt()),
+            comment.getUpvotes(),
+            comment.getDownvotes(),
+            comment.getReactionThumbsUp(),
+            comment.getReactionHeart(),
+            comment.getReactionLaugh(),
+            comment.getReactionSurprise(),
+            comment.getReactionSad()
         );
         return comment;
     }
@@ -73,7 +103,7 @@ public class JdbcCommentRepository implements CommentRepository {
     @Override
     public Optional<Comment> findById(String id) {
         return jdbcTemplate.query(
-            "SELECT id, user_id, bacaan_id, parent_comment, content, created_at FROM comments WHERE id = ?",
+            "SELECT * FROM comments WHERE id = ?",
             COMMENT_ROW_MAPPER,
             id
         ).stream().findFirst();
@@ -94,9 +124,24 @@ public class JdbcCommentRepository implements CommentRepository {
     }
 
     @Override
+    public void addReaction(String commentId, String reactionType) {
+        String column = switch (reactionType.toLowerCase()) {
+            case "upvote" -> "upvotes";
+            case "downvote" -> "downvotes";
+            case "thumbs_up" -> "reaction_thumbs_up";
+            case "heart" -> "reaction_heart";
+            case "laugh" -> "reaction_laugh";
+            case "surprise" -> "reaction_surprise";
+            case "sad" -> "reaction_sad";
+            default -> throw new IllegalArgumentException("Unknown reaction type: " + reactionType);
+        };
+        jdbcTemplate.update("UPDATE comments SET " + column + " = " + column + " + 1 WHERE id = ?", commentId);
+    }
+
+    @Override
     public List<Comment> findAll() {
         return jdbcTemplate.query(
-            "SELECT id, user_id, bacaan_id, parent_comment, content, created_at FROM comments ORDER BY created_at DESC",
+            "SELECT * FROM comments ORDER BY created_at DESC",
             COMMENT_ROW_MAPPER
         );
     }
@@ -104,7 +149,7 @@ public class JdbcCommentRepository implements CommentRepository {
     @Override
     public List<Comment> findByBacaanId(String bacaanId) {
         return jdbcTemplate.query(
-            "SELECT id, user_id, bacaan_id, parent_comment, content, created_at FROM comments WHERE bacaan_id = ? ORDER BY created_at DESC",
+            "SELECT * FROM comments WHERE bacaan_id = ? ORDER BY created_at DESC",
             COMMENT_ROW_MAPPER,
             bacaanId
         );

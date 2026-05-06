@@ -15,6 +15,8 @@ public interface CommentRepository {
 
     int deleteById(String id);
 
+    void addReaction(String commentId, String reactionType);
+
     List<Comment> findAll();
 
     List<Comment> findByBacaanId(String bacaanId);
