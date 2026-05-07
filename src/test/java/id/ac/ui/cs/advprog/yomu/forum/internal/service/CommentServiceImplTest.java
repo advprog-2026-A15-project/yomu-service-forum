@@ -2,31 +2,253 @@ package id.ac.ui.cs.advprog.yomu.forum.internal.service;
 
 import id.ac.ui.cs.advprog.yomu.forum.internal.model.Comment;
 import id.ac.ui.cs.advprog.yomu.forum.internal.repository.CommentRepository;
+import id.ac.ui.cs.advprog.yomu.shared.event.CommentCreatedEvent;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.List;
 import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 class CommentServiceImplTest {
 
-    @Test
-    void addReaction_callsRepository() {
-        CommentRepository repo = mock(CommentRepository.class);
-        RabbitTemplate rabbit = mock(RabbitTemplate.class);
-        Clock clock = Clock.systemUTC();
+	private CommentRepository mockRepo;
+	private RabbitTemplateStub stubRabbit;
+	private Clock fixedClock;
+	private CommentServiceImpl service;
 
-        CommentServiceImpl service = new CommentServiceImpl(repo, rabbit, clock);
+	@BeforeEach
+	void setUp() {
+		mockRepo = mock(CommentRepository.class);
+		stubRabbit = new RabbitTemplateStub();
+		fixedClock = Clock.fixed(Instant.parse("2026-04-23T10:00:00Z"), ZoneId.of("UTC"));
+		service = new CommentServiceImpl(mockRepo, stubRabbit, fixedClock);
+	}
 
-        Comment comment = new Comment("user1", "bacaan1", "content");
-        comment.setId("c1");
+	@Test
+	void createComment_withValidData_shouldSaveAndPublishEvent() {
+		Comment saved = new Comment("user1", "bacaan1", "root", "Test content");
+		saved.setId("comment-1");
+		saved.setCreatedAt(LocalDateTime.now(fixedClock));
 
-        when(repo.findById("c1")).thenReturn(Optional.of(comment));
+		when(mockRepo.save(any(Comment.class))).thenReturn(saved);
 
-        service.addReaction("c1", "upvote");
+		CommentCreatedEvent result = service.createComment("user1", "bacaan1", "Test content", "root");
 
-        verify(repo, times(1)).addReaction("c1", "upvote");
-    }
+		assertNotNull(result);
+		assertEquals("user1", result.userId());
+		assertEquals("bacaan1", result.bacaanId());
+		assertEquals("Test content", result.commentContent());
+		assertEquals("comment-1", result.commentId());
+		assertEquals(1, stubRabbit.publishedEvents.size());
+	}
+
+	@Test
+	void createComment_withNullParent_shouldDefaultToRoot() {
+		Comment saved = new Comment("user1", "bacaan1", "root", "Test");
+		saved.setId("comment-1");
+		saved.setCreatedAt(LocalDateTime.now(fixedClock));
+
+		when(mockRepo.save(any(Comment.class))).thenReturn(saved);
+
+		service.createComment("user1", "bacaan1", "Test", null);
+
+		verify(mockRepo, times(1)).save(argThat(c -> "root".equals(c.getParentComment())));
+	}
+
+	@Test
+	void createComment_withBlankParent_shouldDefaultToRoot() {
+		Comment saved = new Comment("user1", "bacaan1", "root", "Test");
+		saved.setId("comment-1");
+		saved.setCreatedAt(LocalDateTime.now(fixedClock));
+
+		when(mockRepo.save(any(Comment.class))).thenReturn(saved);
+
+		service.createComment("user1", "bacaan1", "Test", "  ");
+
+		verify(mockRepo, times(1)).save(argThat(c -> "root".equals(c.getParentComment())));
+	}
+
+	@Test
+	void createComment_withValidParentId_shouldAccept() {
+		Comment parent = new Comment("user0", "bacaan1", "root", "Parent");
+		parent.setId("parent-1");
+
+		Comment saved = new Comment("user1", "bacaan1", "parent-1", "Child");
+		saved.setId("comment-1");
+		saved.setCreatedAt(LocalDateTime.now(fixedClock));
+
+		when(mockRepo.findById("parent-1")).thenReturn(Optional.of(parent));
+		when(mockRepo.save(any(Comment.class))).thenReturn(saved);
+
+		CommentCreatedEvent result = service.createComment("user1", "bacaan1", "Child", "parent-1");
+
+		assertNotNull(result);
+		assertEquals("parent-1", result.parentComment());
+	}
+
+	@Test
+	void createComment_withNonExistentParent_shouldThrow() {
+		when(mockRepo.findById("nonexistent")).thenReturn(Optional.empty());
+
+		assertThrows(ResponseStatusException.class,
+			() -> service.createComment("user1", "bacaan1", "Child", "nonexistent"));
+	}
+
+	@Test
+	void createComment_withParentFromDifferentBacaan_shouldThrow() {
+		Comment parent = new Comment("user0", "bacaan2", "root", "Parent");
+		parent.setId("parent-1");
+
+		when(mockRepo.findById("parent-1")).thenReturn(Optional.of(parent));
+
+		assertThrows(ResponseStatusException.class,
+			() -> service.createComment("user1", "bacaan1", "Child", "parent-1"));
+	}
+
+	@Test
+	void addReaction_shouldIncrementCounter() {
+		Comment comment = new Comment("user1", "bacaan1", "content");
+		comment.setId("c1");
+		comment.setUpvotes(0);
+
+		when(mockRepo.findById("c1")).thenReturn(Optional.of(comment));
+
+		service.addReaction("c1", "upvote");
+
+		verify(mockRepo, times(1)).addReaction("c1", "upvote");
+	}
+
+	@Test
+	void addReaction_withMultipleTypes() {
+		Comment comment = new Comment("user1", "bacaan1", "content");
+		comment.setId("c1");
+
+		when(mockRepo.findById("c1")).thenReturn(Optional.of(comment));
+
+		service.addReaction("c1", "heart");
+		service.addReaction("c1", "laugh");
+		service.addReaction("c1", "surprise");
+
+		verify(mockRepo, times(1)).addReaction("c1", "heart");
+		verify(mockRepo, times(1)).addReaction("c1", "laugh");
+		verify(mockRepo, times(1)).addReaction("c1", "surprise");
+	}
+
+	@Test
+	void addReaction_withNonExistentComment_shouldThrow() {
+		when(mockRepo.findById("nonexistent")).thenReturn(Optional.empty());
+
+		assertThrows(ResponseStatusException.class, () -> service.addReaction("nonexistent", "upvote"));
+	}
+
+	@Test
+	void getComment_shouldReturnCommentResponse() {
+		Comment comment = new Comment("user1", "bacaan1", "Test content");
+		comment.setId("c1");
+		comment.setCreatedAt(LocalDateTime.now(fixedClock));
+		comment.setUpvotes(5);
+		comment.setDownvotes(1);
+		comment.setReactionThumbsUp(3);
+
+		when(mockRepo.findById("c1")).thenReturn(Optional.of(comment));
+
+		CommentResponse result = service.getComment("c1");
+
+		assertNotNull(result);
+		assertEquals("c1", result.commentId());
+		assertEquals("user1", result.userId());
+		assertEquals("Test content", result.content());
+		assertEquals(5, result.upvotes());
+		assertEquals(1, result.downvotes());
+		assertEquals(3, result.reactionThumbsUp());
+	}
+
+	@Test
+	void getComment_withNonExistentComment_shouldThrow() {
+		when(mockRepo.findById("nonexistent")).thenReturn(Optional.empty());
+
+		assertThrows(ResponseStatusException.class, () -> service.getComment("nonexistent"));
+	}
+
+	@Test
+	void listComments_shouldReturnAllComments() {
+		Comment c1 = new Comment("user1", "bacaan1", "Content 1");
+		c1.setId("c1");
+		c1.setCreatedAt(LocalDateTime.now(fixedClock));
+
+		Comment c2 = new Comment("user2", "bacaan1", "Content 2");
+		c2.setId("c2");
+		c2.setCreatedAt(LocalDateTime.now(fixedClock));
+
+		when(mockRepo.findAll()).thenReturn(List.of(c1, c2));
+
+		List<CommentResponse> results = service.listComments(null);
+
+		assertEquals(2, results.size());
+		assertEquals("c1", results.get(0).commentId());
+		assertEquals("c2", results.get(1).commentId());
+	}
+
+	@Test
+	void listComments_filterByBacaanId_shouldReturnFilteredComments() {
+		Comment c1 = new Comment("user1", "bacaan1", "Content 1");
+		c1.setId("c1");
+		c1.setCreatedAt(LocalDateTime.now(fixedClock));
+
+		when(mockRepo.findByBacaanId("bacaan1")).thenReturn(List.of(c1));
+
+		List<CommentResponse> results = service.listComments("bacaan1");
+
+		assertEquals(1, results.size());
+		assertEquals("bacaan1", results.get(0).bacaanId());
+	}
+
+	@Test
+	void listComments_withEmptyBacaanId_shouldReturnAll() {
+		Comment c1 = new Comment("user1", "bacaan1", "Content 1");
+		c1.setId("c1");
+		c1.setCreatedAt(LocalDateTime.now(fixedClock));
+
+		when(mockRepo.findAll()).thenReturn(List.of(c1));
+
+		List<CommentResponse> results = service.listComments("");
+
+		assertEquals(1, results.size());
+	}
+
+	@Test
+	void listCommentsTree_shouldBuildTreeStructure() {
+		Comment root = new Comment("user1", "bacaan1", "root", "Root comment");
+		root.setId("root-1");
+		root.setCreatedAt(LocalDateTime.now(fixedClock));
+
+		Comment child = new Comment("user2", "bacaan1", "root-1", "Child comment");
+		child.setId("child-1");
+		child.setCreatedAt(LocalDateTime.now(fixedClock));
+
+		when(mockRepo.findAll()).thenReturn(List.of(root, child));
+
+		List<CommentResponse> trees = service.listCommentsTree(null);
+
+		assertEquals(1, trees.size());
+	}
+
+	static class RabbitTemplateStub extends org.springframework.amqp.rabbit.core.RabbitTemplate {
+		java.util.List<Object> publishedEvents = new java.util.ArrayList<>();
+
+		@Override
+		public void convertAndSend(String exchange, Object message) {
+			publishedEvents.add(message);
+		}
+	}
 }
