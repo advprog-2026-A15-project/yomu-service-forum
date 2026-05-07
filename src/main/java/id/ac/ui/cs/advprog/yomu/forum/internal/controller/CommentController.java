@@ -44,6 +44,16 @@ public class CommentController {
 			));
 	}
 
+	@PostMapping("/{commentId}/reactions")
+	@PreAuthorize("isAuthenticated()")
+	public ResponseEntity<CommentResponse> addReaction(
+		@PathVariable String commentId,
+		@Valid @RequestBody ReactionRequest request
+	) {
+		commentService.addReaction(commentId, request.reactionType());
+		return ResponseEntity.ok(commentService.getComment(commentId));
+	}
+
 	@GetMapping
 	public List<CommentResponse> getComments(@RequestParam(required = false) String bacaanId) {
 		return commentService.listComments(bacaanId);

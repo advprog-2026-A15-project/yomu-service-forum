@@ -27,4 +27,6 @@ public interface CommentService {
 	List<CommentResponse> listComments(String bacaanId);
 
 	List<CommentTreeResponse> listCommentsTree(String bacaanId);
+
+	CommentResponse getComment(String commentId);
 }

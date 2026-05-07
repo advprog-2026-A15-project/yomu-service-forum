@@ -201,6 +201,12 @@ public class CommentServiceImpl implements CommentService {
 		return roots.stream().map(this::toTreeResponse).toList();
 	}
 
+	@Override
+	public CommentResponse getComment(String commentId) {
+		Comment comment = getCommentOrThrow(commentId);
+		return toCommentResponse(comment);
+	}
+
 	private CommentResponse toCommentResponse(Comment comment) {
 		return new CommentResponse(
 				comment.getId(),
