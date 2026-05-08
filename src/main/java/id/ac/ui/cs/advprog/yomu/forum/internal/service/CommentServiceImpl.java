@@ -50,7 +50,8 @@ public class CommentServiceImpl implements CommentService {
 		validateParentComment(bacaanId, normalizedParent);
 
 		Instant timestamp = clock.instant();
-		Comment comment = new Comment(userId, bacaanId, normalizedParent, commentContent);
+		String sanitizedContent = sanitize(commentContent);
+		Comment comment = new Comment(userId, bacaanId, normalizedParent, sanitizedContent);
 		comment.setCreatedAt(LocalDateTime.ofInstant(timestamp, clock.getZone()));
 
 		Comment savedComment = commentRepository.save(comment);
@@ -59,7 +60,7 @@ public class CommentServiceImpl implements CommentService {
 				savedComment.getBacaanId(),
 				savedComment.getParentComment(),
 				savedComment.getId(),
-				savedComment.getContent(),
+				sanitizedContent,
 				timestamp);
 		rabbitTemplate.convertAndSend("yomu.comment.created", event);
 		return event;
@@ -71,14 +72,15 @@ public class CommentServiceImpl implements CommentService {
 		Comment existingComment = getCommentOrThrow(commentId);
 		Instant timestamp = clock.instant();
 
-		commentRepository.updateContentById(commentId, commentContent);
+		String sanitizedContent = sanitize(commentContent);
+		commentRepository.updateContentById(commentId, sanitizedContent);
 
 		CommentUpdatedEvent event = new CommentUpdatedEvent(
 				existingComment.getUserId(),
 				existingComment.getBacaanId(),
 				existingComment.getParentComment(),
 				commentId,
-				commentContent,
+				sanitizedContent,
 				timestamp);
 		rabbitTemplate.convertAndSend("yomu.comment.updated", event);
 		return event;
@@ -96,14 +98,15 @@ public class CommentServiceImpl implements CommentService {
 		}
 
 		Instant timestamp = clock.instant();
-		commentRepository.updateContentById(commentId, commentContent);
+		String sanitizedContent = sanitize(commentContent);
+		commentRepository.updateContentById(commentId, sanitizedContent);
 
 		CommentUpdatedEvent event = new CommentUpdatedEvent(
 				existingComment.getUserId(),
 				existingComment.getBacaanId(),
 				existingComment.getParentComment(),
 				commentId,
-				commentContent,
+				sanitizedContent,
 				timestamp);
 		rabbitTemplate.convertAndSend("yomu.comment.updated", event);
 		return event;
@@ -267,5 +270,17 @@ public class CommentServiceImpl implements CommentService {
 	private Comment getCommentOrThrow(String commentId) {
 		return commentRepository.findById(commentId)
 				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Comment not found"));
+	}
+
+	private String sanitize(String content) {
+		if (content == null) {
+			return "";
+		}
+		return content
+				.replace("&", "&amp;")
+				.replace("<", "&lt;")
+				.replace(">", "&gt;")
+				.replace("\"", "&quot;")
+				.replace("'", "&#39;");
 	}
 }

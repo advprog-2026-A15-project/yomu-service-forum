@@ -123,9 +123,9 @@ class CommentServiceImplTest {
 
 		when(mockRepo.findById("c1")).thenReturn(Optional.of(comment));
 
-		service.addReaction("c1", "upvote");
+		service.addReaction("c1", "user2", "upvote");
 
-		verify(mockRepo, times(1)).addReaction("c1", "upvote");
+		verify(mockRepo, times(1)).addReaction("c1", "user2", "upvote");
 	}
 
 	@Test
@@ -135,20 +135,20 @@ class CommentServiceImplTest {
 
 		when(mockRepo.findById("c1")).thenReturn(Optional.of(comment));
 
-		service.addReaction("c1", "heart");
-		service.addReaction("c1", "laugh");
-		service.addReaction("c1", "surprise");
+		service.addReaction("c1", "user2", "heart");
+		service.addReaction("c1", "user2", "laugh");
+		service.addReaction("c1", "user2", "surprise");
 
-		verify(mockRepo, times(1)).addReaction("c1", "heart");
-		verify(mockRepo, times(1)).addReaction("c1", "laugh");
-		verify(mockRepo, times(1)).addReaction("c1", "surprise");
+		verify(mockRepo, times(1)).addReaction("c1", "user2", "heart");
+		verify(mockRepo, times(1)).addReaction("c1", "user2", "laugh");
+		verify(mockRepo, times(1)).addReaction("c1", "user2", "surprise");
 	}
 
 	@Test
 	void addReaction_withNonExistentComment_shouldThrow() {
 		when(mockRepo.findById("nonexistent")).thenReturn(Optional.empty());
 
-		assertThrows(ResponseStatusException.class, () -> service.addReaction("nonexistent", "upvote"));
+		assertThrows(ResponseStatusException.class, () -> service.addReaction("nonexistent", "user2", "upvote"));
 	}
 
 	@Test
@@ -165,12 +165,12 @@ class CommentServiceImplTest {
 		CommentResponse result = service.getComment("c1");
 
 		assertNotNull(result);
-		assertEquals("c1", result.commentId());
+		assertEquals("c1", result.id());
 		assertEquals("user1", result.userId());
 		assertEquals("Test content", result.content());
 		assertEquals(5, result.upvotes());
 		assertEquals(1, result.downvotes());
-		assertEquals(3, result.reactionThumbsUp());
+		assertEquals(3, result.thumbsUp());
 	}
 
 	@Test
@@ -195,8 +195,8 @@ class CommentServiceImplTest {
 		List<CommentResponse> results = service.listComments(null);
 
 		assertEquals(2, results.size());
-		assertEquals("c1", results.get(0).commentId());
-		assertEquals("c2", results.get(1).commentId());
+		assertEquals("c1", results.get(0).id());
+		assertEquals("c2", results.get(1).id());
 	}
 
 	@Test
@@ -238,7 +238,7 @@ class CommentServiceImplTest {
 
 		when(mockRepo.findAll()).thenReturn(List.of(root, child));
 
-		List<CommentResponse> trees = service.listCommentsTree(null);
+		List<CommentTreeResponse> trees = service.listCommentsTree(null);
 
 		assertEquals(1, trees.size());
 	}

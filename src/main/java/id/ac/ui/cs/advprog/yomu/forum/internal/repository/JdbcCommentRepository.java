@@ -121,6 +121,7 @@ public class JdbcCommentRepository implements CommentRepository {
 
     @Override
     public int deleteById(String id) {
+        jdbcTemplate.update("DELETE FROM comment_reactions WHERE comment_id = ?", id);
         return jdbcTemplate.update("DELETE FROM comments WHERE id = ?", id);
     }
 
@@ -181,7 +182,11 @@ public class JdbcCommentRepository implements CommentRepository {
     @Override
     public List<Comment> findAll() {
         return jdbcTemplate.query(
-            "SELECT * FROM comments ORDER BY created_at DESC",
+            """
+            SELECT * FROM comments
+            ORDER BY (upvotes + reaction_thumbs_up + reaction_heart + reaction_laugh + reaction_surprise + reaction_sad - downvotes) DESC,
+                     created_at DESC
+            """,
             COMMENT_ROW_MAPPER
         );
     }
@@ -189,7 +194,12 @@ public class JdbcCommentRepository implements CommentRepository {
     @Override
     public List<Comment> findByBacaanId(String bacaanId) {
         return jdbcTemplate.query(
-            "SELECT * FROM comments WHERE bacaan_id = ? ORDER BY created_at DESC",
+            """
+            SELECT * FROM comments
+            WHERE bacaan_id = ?
+            ORDER BY (upvotes + reaction_thumbs_up + reaction_heart + reaction_laugh + reaction_surprise + reaction_sad - downvotes) DESC,
+                     created_at DESC
+            """,
             COMMENT_ROW_MAPPER,
             bacaanId
         );

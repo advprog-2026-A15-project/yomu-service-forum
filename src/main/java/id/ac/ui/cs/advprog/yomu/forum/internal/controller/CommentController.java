@@ -34,10 +34,13 @@ public class CommentController {
 	}
 
 	@PostMapping
-	public ResponseEntity<CommentCreatedEvent> createComment(@Valid @RequestBody CreateCommentRequest request) {
+	public ResponseEntity<CommentCreatedEvent> createComment(
+		@Valid @RequestBody CreateCommentRequest request,
+		Authentication auth
+	) {
 		return ResponseEntity.status(HttpStatus.CREATED)
 			.body(commentService.createComment(
-				request.userId(),
+				authenticatedUserId(auth),
 				request.bacaanId(),
 				request.commentContent(),
 				request.parentComment()
@@ -51,7 +54,7 @@ public class CommentController {
 		@Valid @RequestBody ReactionRequest request,
 		Authentication auth
 	) {
-		String userId = (String) auth.getCredentials();
+		String userId = authenticatedUserId(auth);
 		commentService.addReaction(commentId, userId, request.reactionType());
 		return ResponseEntity.ok(commentService.getComment(commentId));
 	}
@@ -72,7 +75,7 @@ public class CommentController {
 		@Valid @RequestBody UpdateCommentRequest request,
 		Authentication auth
 	) {
-		String userId = auth != null ? (String) auth.getCredentials() : null;
+		String userId = auth != null ? authenticatedUserId(auth) : null;
 		String role = auth != null ? auth.getAuthorities().stream()
 			.map(a -> a.getAuthority().replace("ROLE_", ""))
 			.findFirst().orElse(null) : null;
@@ -84,10 +87,20 @@ public class CommentController {
 		@PathVariable String commentId,
 		Authentication auth
 	) {
-		String userId = auth != null ? (String) auth.getCredentials() : null;
+		String userId = auth != null ? authenticatedUserId(auth) : null;
 		String role = auth != null ? auth.getAuthorities().stream()
 			.map(a -> a.getAuthority().replace("ROLE_", ""))
 			.findFirst().orElse(null) : null;
 		return commentService.deleteComment(commentId, userId, role);
+	}
+
+	private String authenticatedUserId(Authentication auth) {
+		if (auth == null || auth.getCredentials() == null) {
+			throw new org.springframework.web.server.ResponseStatusException(
+				HttpStatus.UNAUTHORIZED,
+				"User tidak terautentikasi"
+			);
+		}
+		return auth.getCredentials().toString();
 	}
 }

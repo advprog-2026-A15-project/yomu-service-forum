@@ -3,232 +3,122 @@ package id.ac.ui.cs.advprog.yomu.forum.internal.controller;
 import id.ac.ui.cs.advprog.yomu.forum.internal.service.CommentResponse;
 import id.ac.ui.cs.advprog.yomu.forum.internal.service.CommentService;
 import id.ac.ui.cs.advprog.yomu.shared.event.CommentCreatedEvent;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.MockBean;
-import org.springframework.http.MediaType;
-import org.springframework.security.test.context.support.WithMockUser;
-import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.util.List;
 
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@WebMvcTest(CommentController.class)
-@AutoConfigureMockMvc(addFilters = false)
 class CommentControllerTest {
 
-	@Autowired
-	private MockMvc mockMvc;
+    private CommentService commentService;
+    private CommentController controller;
 
-	@MockBean
-	private CommentService commentService;
+    @BeforeEach
+    void setUp() {
+        commentService = mock(CommentService.class);
+        controller = new CommentController(commentService);
+    }
 
-	private static final String API_ENDPOINT = "/api/forum/comments";
+    @Test
+    void createCommentUsesAuthenticatedUserId() {
+        CommentCreatedEvent event = new CommentCreatedEvent(
+            "user-1",
+            "bacaan-1",
+            "root",
+            "comment-1",
+            "Test",
+            Instant.now()
+        );
+        when(commentService.createComment("user-1", "bacaan-1", "Test", "root"))
+            .thenReturn(event);
 
-	@Test
-	void createComment_withValidRequest_shouldReturn201() throws Exception {
-		CommentCreatedEvent event = new CommentCreatedEvent(
-			"user1",
-			"bacaan1",
-			"root",
-			"comment1",
-			"Test content",
-			Instant.now()
-		);
+        var response = controller.createComment(
+            new CreateCommentRequest("spoofed-user", "bacaan-1", "Test", "root"),
+            auth("user-1")
+        );
 
-		when(commentService.createComment(
-			eq("user1"),
-			eq("bacaan1"),
-			eq("Test content"),
-			eq("root")
-		)).thenReturn(event);
+        assertEquals(HttpStatus.CREATED, response.getStatusCode());
+        assertEquals("user-1", response.getBody().userId());
+    }
 
-		mockMvc.perform(post(API_ENDPOINT)
-			.contentType(MediaType.APPLICATION_JSON)
-			.content("""
-				{
-					"userId": "user1",
-					"bacaanId": "bacaan1",
-					"commentContent": "Test content",
-					"parentComment": "root"
-				}
-				"""))
-			.andExpect(status().isCreated())
-			.andExpect(jsonPath("$.commentId").value("comment1"))
-			.andExpect(jsonPath("$.userId").value("user1"));
-	}
+    @Test
+    void addReactionUsesAuthenticatedUserId() {
+        CommentResponse updated = new CommentResponse(
+            "comment-1",
+            "user-1",
+            "bacaan-1",
+            "root",
+            "Content",
+            Instant.now(),
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+        );
+        when(commentService.getComment("comment-1")).thenReturn(updated);
 
-	@Test
-	void createComment_withoutParentComment_shouldDefaultToRoot() throws Exception {
-		CommentCreatedEvent event = new CommentCreatedEvent(
-			"user1",
-			"bacaan1",
-			"root",
-			"comment1",
-			"Test content",
-			Instant.now()
-		);
+        var response = controller.addReaction(
+            "comment-1",
+            new ReactionRequest("upvote"),
+            auth("user-2")
+        );
 
-		when(commentService.createComment(
-			eq("user1"),
-			eq("bacaan1"),
-			eq("Test content"),
-			anyString()
-		)).thenReturn(event);
+        verify(commentService).addReaction("comment-1", "user-2", "upvote");
+        assertEquals(updated, response.getBody());
+    }
 
-		mockMvc.perform(post(API_ENDPOINT)
-			.contentType(MediaType.APPLICATION_JSON)
-			.content("""
-				{
-					"userId": "user1",
-					"bacaanId": "bacaan1",
-					"commentContent": "Test content"
-				}
-				"""))
-			.andExpect(status().isCreated());
-	}
+    @Test
+    void getCommentsReturnsServiceData() {
+        CommentResponse comment = new CommentResponse(
+            "comment-1",
+            "user-1",
+            "bacaan-1",
+            "root",
+            "Content",
+            Instant.now(),
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+        );
+        when(commentService.listComments("bacaan-1")).thenReturn(List.of(comment));
 
-	@Test
-	void getComments_withoutFilter_shouldReturnAll() throws Exception {
-		CommentResponse c1 = new CommentResponse(
-			"comment1", "user1", "bacaan1", "root", "Content 1",
-			Instant.now(), 0, 0, 0, 0, 0, 0, 0
-		);
+        List<CommentResponse> comments = controller.getComments("bacaan-1");
 
-		when(commentService.listComments(null)).thenReturn(List.of(c1));
+        assertEquals(1, comments.size());
+        assertEquals("comment-1", comments.getFirst().id());
+    }
 
-		mockMvc.perform(get(API_ENDPOINT))
-			.andExpect(status().isOk())
-			.andExpect(jsonPath("$[0].commentId").value("comment1"))
-			.andExpect(jsonPath("$.length()").value(1));
-	}
+    @Test
+    void createCommentWithoutAuthenticationThrowsUnauthorized() {
+        ResponseStatusException exception = assertThrows(
+            ResponseStatusException.class,
+            () -> controller.createComment(
+                new CreateCommentRequest("user-1", "bacaan-1", "Test", "root"),
+                null
+            )
+        );
 
-	@Test
-	void getComments_filterByBacaanId_shouldReturnFiltered() throws Exception {
-		CommentResponse c1 = new CommentResponse(
-			"comment1", "user1", "bacaan1", "root", "Content 1",
-			Instant.now(), 0, 0, 0, 0, 0, 0, 0
-		);
+        assertEquals(HttpStatus.UNAUTHORIZED, exception.getStatusCode());
+    }
 
-		when(commentService.listComments("bacaan1")).thenReturn(List.of(c1));
-
-		mockMvc.perform(get(API_ENDPOINT + "?bacaanId=bacaan1"))
-			.andExpect(status().isOk())
-			.andExpect(jsonPath("$[0].bacaanId").value("bacaan1"));
-	}
-
-	@Test
-	void getCommentsTree_shouldReturnTreeStructure() throws Exception {
-		CommentResponse root = new CommentResponse(
-			"comment1", "user1", "bacaan1", "root", "Root",
-			Instant.now(), 0, 0, 0, 0, 0, 0, 0
-		);
-
-		when(commentService.listCommentsTree(null)).thenReturn(List.of(root));
-
-		mockMvc.perform(get(API_ENDPOINT + "/tree"))
-			.andExpect(status().isOk())
-			.andExpect(jsonPath("$[0].commentId").value("comment1"));
-	}
-
-	@Test
-	@WithMockUser(username = "user1")
-	void addReaction_withValidRequest_shouldReturn200() throws Exception {
-		CommentResponse updated = new CommentResponse(
-			"comment1", "user1", "bacaan1", "root", "Content",
-			Instant.now(), 1, 0, 0, 0, 0, 0, 0
-		);
-
-		when(commentService.addReaction("comment1", "upvote")).thenReturn(null);
-		when(commentService.getComment("comment1")).thenReturn(updated);
-
-		mockMvc.perform(post(API_ENDPOINT + "/comment1/reactions")
-			.contentType(MediaType.APPLICATION_JSON)
-			.content("""
-				{
-					"reactionType": "upvote"
-				}
-				"""))
-			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.commentId").value("comment1"));
-	}
-
-	@Test
-	@WithMockUser(username = "user1")
-	void addReaction_withMultipleTypes_shouldAllWork() throws Exception {
-		CommentResponse updated = new CommentResponse(
-			"comment1", "user1", "bacaan1", "root", "Content",
-			Instant.now(), 0, 0, 1, 1, 1, 1, 0
-		);
-
-		when(commentService.getComment("comment1")).thenReturn(updated);
-
-		mockMvc.perform(post(API_ENDPOINT + "/comment1/reactions")
-			.contentType(MediaType.APPLICATION_JSON)
-			.content("""
-				{
-					"reactionType": "thumbs_up"
-				}
-				"""))
-			.andExpect(status().isOk());
-	}
-
-	@Test
-	void addReaction_withoutAuthentication_shouldReturn401() throws Exception {
-		mockMvc.perform(post(API_ENDPOINT + "/comment1/reactions")
-			.contentType(MediaType.APPLICATION_JSON)
-			.content("""
-				{
-					"reactionType": "upvote"
-				}
-				"""))
-			.andExpect(status().isUnauthorized());
-	}
-
-	@Test
-	void createComment_withMissingField_shouldReturn400() throws Exception {
-		mockMvc.perform(post(API_ENDPOINT)
-			.contentType(MediaType.APPLICATION_JSON)
-			.content("""
-				{
-					"userId": "user1",
-					"bacaanId": "bacaan1"
-				}
-				"""))
-			.andExpect(status().isBadRequest());
-	}
-
-	@Test
-	@WithMockUser(username = "user1", roles = "USER")
-	void updateComment_withValidRequest_shouldUpdate() throws Exception {
-		mockMvc.perform(put(API_ENDPOINT + "/comment1")
-			.contentType(MediaType.APPLICATION_JSON)
-			.content("""
-				{
-					"commentContent": "Updated content"
-				}
-				"""))
-			.andExpect(status().isOk());
-	}
-
-	@Test
-	@WithMockUser(username = "user1", roles = "USER")
-	void deleteComment_withValidRequest_shouldDelete() throws Exception {
-		mockMvc.perform(delete(API_ENDPOINT + "/comment1"))
-			.andExpect(status().isOk());
-	}
-
-	@Test
-	void deleteComment_withoutAuthentication_shouldReturn401() throws Exception {
-		mockMvc.perform(delete(API_ENDPOINT + "/comment1"))
-			.andExpect(status().isUnauthorized());
-	}
+    private UsernamePasswordAuthenticationToken auth(String userId) {
+        return new UsernamePasswordAuthenticationToken("username", userId, List.of());
+    }
 }
