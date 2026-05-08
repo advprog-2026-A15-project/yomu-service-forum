@@ -60,13 +60,14 @@ public class JdbcCommentRepository implements CommentRepository {
                 reaction_sad INTEGER NOT NULL DEFAULT 0
             )
             """);
-        jdbcTemplate.execute("ALTER TABLE comments ADD COLUMN IF NOT EXISTS upvotes INTEGER NOT NULL DEFAULT 0");
-        jdbcTemplate.execute("ALTER TABLE comments ADD COLUMN IF NOT EXISTS downvotes INTEGER NOT NULL DEFAULT 0");
-        jdbcTemplate.execute("ALTER TABLE comments ADD COLUMN IF NOT EXISTS reaction_thumbs_up INTEGER NOT NULL DEFAULT 0");
-        jdbcTemplate.execute("ALTER TABLE comments ADD COLUMN IF NOT EXISTS reaction_heart INTEGER NOT NULL DEFAULT 0");
-        jdbcTemplate.execute("ALTER TABLE comments ADD COLUMN IF NOT EXISTS reaction_laugh INTEGER NOT NULL DEFAULT 0");
-        jdbcTemplate.execute("ALTER TABLE comments ADD COLUMN IF NOT EXISTS reaction_surprise INTEGER NOT NULL DEFAULT 0");
-        jdbcTemplate.execute("ALTER TABLE comments ADD COLUMN IF NOT EXISTS reaction_sad INTEGER NOT NULL DEFAULT 0");
+        jdbcTemplate.execute("""
+            CREATE TABLE IF NOT EXISTS comment_reactions (
+                comment_id VARCHAR(36) NOT NULL,
+                user_id VARCHAR(255) NOT NULL,
+                reaction_type VARCHAR(50) NOT NULL,
+                PRIMARY KEY (comment_id, user_id)
+            )
+            """);
     }
 
     @Override
@@ -124,8 +125,48 @@ public class JdbcCommentRepository implements CommentRepository {
     }
 
     @Override
-    public void addReaction(String commentId, String reactionType) {
-        String column = switch (reactionType.toLowerCase()) {
+    public void addReaction(String commentId, String userId, String reactionType) {
+        // 1. Check if user already reacted
+        String existingReaction = jdbcTemplate.queryForList(
+            "SELECT reaction_type FROM comment_reactions WHERE comment_id = ? AND user_id = ?",
+            String.class, commentId, userId
+        ).stream().findFirst().orElse(null);
+
+        if (existingReaction != null) {
+            if (existingReaction.equalsIgnoreCase(reactionType)) {
+                return; // No change
+            }
+            // Decrement old reaction counter
+            decrementCounter(commentId, existingReaction);
+            // Update reaction record
+            jdbcTemplate.update(
+                "UPDATE comment_reactions SET reaction_type = ? WHERE comment_id = ? AND user_id = ?",
+                reactionType, commentId, userId
+            );
+        } else {
+            // New reaction record
+            jdbcTemplate.update(
+                "INSERT INTO comment_reactions (comment_id, user_id, reaction_type) VALUES (?, ?, ?)",
+                commentId, userId, reactionType
+            );
+        }
+
+        // Increment new reaction counter
+        incrementCounter(commentId, reactionType);
+    }
+
+    private void incrementCounter(String commentId, String type) {
+        String column = mapReactionToColumn(type);
+        jdbcTemplate.update("UPDATE comments SET " + column + " = " + column + " + 1 WHERE id = ?", commentId);
+    }
+
+    private void decrementCounter(String commentId, String type) {
+        String column = mapReactionToColumn(type);
+        jdbcTemplate.update("UPDATE comments SET " + column + " = GREATEST(0, " + column + " - 1) WHERE id = ?", commentId);
+    }
+
+    private String mapReactionToColumn(String type) {
+        return switch (type.toLowerCase()) {
             case "upvote" -> "upvotes";
             case "downvote" -> "downvotes";
             case "thumbs_up" -> "reaction_thumbs_up";
@@ -133,9 +174,8 @@ public class JdbcCommentRepository implements CommentRepository {
             case "laugh" -> "reaction_laugh";
             case "surprise" -> "reaction_surprise";
             case "sad" -> "reaction_sad";
-            default -> throw new IllegalArgumentException("Unknown reaction type: " + reactionType);
+            default -> throw new IllegalArgumentException("Unknown reaction type: " + type);
         };
-        jdbcTemplate.update("UPDATE comments SET " + column + " = " + column + " + 1 WHERE id = ?", commentId);
     }
 
     @Override

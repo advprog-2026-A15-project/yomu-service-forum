@@ -22,7 +22,7 @@ public interface CommentService {
 
 	CommentDeletedEvent deleteComment(String commentId, String userId, String role);
 
-	void addReaction(String commentId, String reactionType);
+	void addReaction(String commentId, String userId, String reactionType);
 
 	List<CommentResponse> listComments(String bacaanId);
 

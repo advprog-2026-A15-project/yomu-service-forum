@@ -155,9 +155,9 @@ public class CommentServiceImpl implements CommentService {
 
 	@Override
 	@Transactional
-	public void addReaction(String commentId, String reactionType) {
+	public void addReaction(String commentId, String userId, String reactionType) {
 		getCommentOrThrow(commentId);
-		commentRepository.addReaction(commentId, reactionType);
+		commentRepository.addReaction(commentId, userId, reactionType);
 	}
 
 	@Override

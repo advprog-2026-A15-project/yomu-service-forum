@@ -48,9 +48,11 @@ public class CommentController {
 	@PreAuthorize("isAuthenticated()")
 	public ResponseEntity<CommentResponse> addReaction(
 		@PathVariable String commentId,
-		@Valid @RequestBody ReactionRequest request
+		@Valid @RequestBody ReactionRequest request,
+		Authentication auth
 	) {
-		commentService.addReaction(commentId, request.reactionType());
+		String userId = (String) auth.getCredentials();
+		commentService.addReaction(commentId, userId, request.reactionType());
 		return ResponseEntity.ok(commentService.getComment(commentId));
 	}
 
