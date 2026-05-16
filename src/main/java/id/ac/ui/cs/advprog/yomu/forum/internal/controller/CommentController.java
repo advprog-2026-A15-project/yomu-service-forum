@@ -95,12 +95,12 @@ public class CommentController {
 	}
 
 	private String authenticatedUserId(Authentication auth) {
-		if (auth == null || auth.getCredentials() == null) {
+		if (auth == null || auth.getPrincipal() == null) {
 			throw new org.springframework.web.server.ResponseStatusException(
 				HttpStatus.UNAUTHORIZED,
 				"User tidak terautentikasi"
 			);
 		}
-		return auth.getCredentials().toString();
+		return auth.getPrincipal().toString();
 	}
 }
