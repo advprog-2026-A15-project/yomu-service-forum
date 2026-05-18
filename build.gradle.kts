@@ -25,7 +25,6 @@ dependencies {
 
     implementation("id.ac.ui.cs.advprog.yomu:shared-lib:0.0.1-SNAPSHOT")
     implementation("org.springframework.boot:spring-boot-starter-web")
-    implementation("org.springframework.amqp:spring-rabbit")
     implementation("org.springframework.boot:spring-boot-starter-amqp")
     implementation("com.fasterxml.jackson.core:jackson-databind")
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
@@ -33,7 +32,6 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-validation")
 
     implementation("org.springframework.boot:spring-boot-starter-jdbc")
-    implementation("jakarta.persistence:jakarta.persistence-api:3.1.0")
     runtimeOnly("com.h2database:h2")
     runtimeOnly("org.postgresql:postgresql")
 }
