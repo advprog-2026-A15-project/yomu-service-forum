@@ -75,7 +75,7 @@ public class CommentController {
 		@Valid @RequestBody UpdateCommentRequest request,
 		Authentication auth
 	) {
-		String userId = auth != null ? authenticatedUserId(auth) : null;
+		String userId = authenticatedUserId(auth);
 		String role = auth != null ? auth.getAuthorities().stream()
 			.map(a -> a.getAuthority().replace("ROLE_", ""))
 			.findFirst().orElse(null) : null;
@@ -87,7 +87,7 @@ public class CommentController {
 		@PathVariable String commentId,
 		Authentication auth
 	) {
-		String userId = auth != null ? authenticatedUserId(auth) : null;
+		String userId = authenticatedUserId(auth);
 		String role = auth != null ? auth.getAuthorities().stream()
 			.map(a -> a.getAuthority().replace("ROLE_", ""))
 			.findFirst().orElse(null) : null;
@@ -95,12 +95,12 @@ public class CommentController {
 	}
 
 	private String authenticatedUserId(Authentication auth) {
-		if (auth == null || auth.getPrincipal() == null) {
+		if (auth == null || auth.getCredentials() == null) {
 			throw new org.springframework.web.server.ResponseStatusException(
 				HttpStatus.UNAUTHORIZED,
 				"User tidak terautentikasi"
 			);
 		}
-		return auth.getPrincipal().toString();
+		return auth.getCredentials().toString();
 	}
 }
