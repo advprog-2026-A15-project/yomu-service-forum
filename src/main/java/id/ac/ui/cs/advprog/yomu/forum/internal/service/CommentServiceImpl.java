@@ -5,6 +5,8 @@ import id.ac.ui.cs.advprog.yomu.shared.event.CommentDeletedEvent;
 import id.ac.ui.cs.advprog.yomu.shared.event.CommentUpdatedEvent;
 import id.ac.ui.cs.advprog.yomu.forum.internal.model.Comment;
 import id.ac.ui.cs.advprog.yomu.forum.internal.repository.CommentRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +24,7 @@ import java.util.Map;
 
 @Service
 public class CommentServiceImpl implements CommentService {
+	private static final Logger log = LoggerFactory.getLogger(CommentServiceImpl.class);
 
 	private final CommentRepository commentRepository;
 	private final RabbitTemplate rabbitTemplate;
@@ -69,37 +72,24 @@ public class CommentServiceImpl implements CommentService {
 	@Override
 	@Transactional
 	public CommentUpdatedEvent updateComment(String commentId, String commentContent) {
-		Comment existingComment = getCommentOrThrow(commentId);
-		Instant timestamp = clock.instant();
-
-		String sanitizedContent = sanitize(commentContent);
-		commentRepository.updateContentById(commentId, sanitizedContent);
-
-		CommentUpdatedEvent event = new CommentUpdatedEvent(
-				existingComment.getUserId(),
-				existingComment.getBacaanId(),
-				existingComment.getParentComment(),
-				commentId,
-				sanitizedContent,
-				timestamp);
-		rabbitTemplate.convertAndSend("yomu.comment.updated", event);
-		return event;
+		return updateComment(commentId, commentContent, null, null);
 	}
 
 	@Override
 	@Transactional
 	public CommentUpdatedEvent updateComment(String commentId, String commentContent, String userId, String role) {
 		Comment existingComment = getCommentOrThrow(commentId);
-		
-		// Authorization: only Admin or comment author can update
-		if (!"ADMIN".equals(role) && !existingComment.getUserId().equals(userId)) {
-			throw new ResponseStatusException(HttpStatus.FORBIDDEN, 
-				"Hanya admin atau penulis komentar yang bisa mengedit komentar ini");
-		}
+		validateModerationPermission(existingComment, userId, role, "mengedit");
 
 		Instant timestamp = clock.instant();
 		String sanitizedContent = sanitize(commentContent);
 		commentRepository.updateContentById(commentId, sanitizedContent);
+		log.info(
+			"Moderation update on comment {} by user {} as {}",
+			commentId,
+			userId,
+			isAdmin(role) ? "admin" : "author"
+		);
 
 		CommentUpdatedEvent event = new CommentUpdatedEvent(
 				existingComment.getUserId(),
@@ -115,35 +105,23 @@ public class CommentServiceImpl implements CommentService {
 	@Override
 	@Transactional
 	public CommentDeletedEvent deleteComment(String commentId) {
-		Comment existingComment = getCommentOrThrow(commentId);
-		Instant timestamp = clock.instant();
-
-		commentRepository.deleteById(commentId);
-
-		CommentDeletedEvent event = new CommentDeletedEvent(
-				existingComment.getUserId(),
-				existingComment.getBacaanId(),
-				existingComment.getParentComment(),
-				existingComment.getId(),
-				existingComment.getContent(),
-				timestamp);
-		rabbitTemplate.convertAndSend("yomu.comment.deleted", event);
-		return event;
+		return deleteComment(commentId, null, null);
 	}
 
 	@Override
 	@Transactional
 	public CommentDeletedEvent deleteComment(String commentId, String userId, String role) {
 		Comment existingComment = getCommentOrThrow(commentId);
-		
-		// Authorization: only Admin or comment author can delete
-		if (!"ADMIN".equals(role) && !existingComment.getUserId().equals(userId)) {
-			throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-				"Hanya admin atau penulis komentar yang bisa menghapus komentar ini");
-		}
+		validateModerationPermission(existingComment, userId, role, "menghapus");
 
 		Instant timestamp = clock.instant();
 		commentRepository.deleteById(commentId);
+		log.info(
+			"Moderation delete on comment {} by user {} as {}",
+			commentId,
+			userId,
+			isAdmin(role) ? "admin" : "author"
+		);
 
 		CommentDeletedEvent event = new CommentDeletedEvent(
 				existingComment.getUserId(),
@@ -270,6 +248,28 @@ public class CommentServiceImpl implements CommentService {
 	private Comment getCommentOrThrow(String commentId) {
 		return commentRepository.findById(commentId)
 				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Comment not found"));
+	}
+
+	private void validateModerationPermission(Comment existingComment, String userId, String role, String action) {
+		if (userId == null || userId.isBlank()) {
+			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User tidak terautentikasi");
+		}
+
+		if (isAdmin(role) || existingComment.getUserId().equals(userId)) {
+			return;
+		}
+
+		log.warn(
+			"Rejected moderation {} on comment {} by user {}",
+			action,
+			existingComment.getId(),
+			userId
+		);
+		throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Hanya admin atau penulis komentar yang bisa " + action + " komentar ini");
+	}
+
+	private boolean isAdmin(String role) {
+		return "ADMIN".equalsIgnoreCase(role);
 	}
 
 	private String sanitize(String content) {

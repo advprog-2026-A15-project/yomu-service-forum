@@ -3,9 +3,12 @@ package id.ac.ui.cs.advprog.yomu.forum.internal.service;
 import id.ac.ui.cs.advprog.yomu.forum.internal.model.Comment;
 import id.ac.ui.cs.advprog.yomu.forum.internal.repository.CommentRepository;
 import id.ac.ui.cs.advprog.yomu.shared.event.CommentCreatedEvent;
+import id.ac.ui.cs.advprog.yomu.shared.event.CommentDeletedEvent;
+import id.ac.ui.cs.advprog.yomu.shared.event.CommentUpdatedEvent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -50,6 +53,20 @@ class CommentServiceImplTest {
 		assertEquals("Test content", result.commentContent());
 		assertEquals("comment-1", result.commentId());
 		assertEquals(1, stubRabbit.publishedEvents.size());
+	}
+
+	@Test
+	void createComment_shouldEscapeHtmlContentBeforePersistingAndPublishing() {
+		Comment saved = new Comment("user1", "bacaan1", "root", "&lt;script&gt;alert(&#39;x&#39;)&lt;/script&gt;");
+		saved.setId("comment-1");
+		saved.setCreatedAt(LocalDateTime.now(fixedClock));
+
+		when(mockRepo.save(any(Comment.class))).thenReturn(saved);
+
+		CommentCreatedEvent result = service.createComment("user1", "bacaan1", "<script>alert('x')</script>", "root");
+
+		assertEquals("&lt;script&gt;alert(&#39;x&#39;)&lt;/script&gt;", result.commentContent());
+		verify(mockRepo).save(argThat(c -> "&lt;script&gt;alert(&#39;x&#39;)&lt;/script&gt;".equals(c.getContent())));
 	}
 
 	@Test
@@ -116,6 +133,69 @@ class CommentServiceImplTest {
 	}
 
 	@Test
+	void updateComment_shouldAllowAuthorAndPublishSanitizedContent() {
+		Comment comment = new Comment("user1", "bacaan1", "root", "Original");
+		comment.setId("c1");
+		comment.setCreatedAt(LocalDateTime.now(fixedClock));
+
+		when(mockRepo.findById("c1")).thenReturn(Optional.of(comment));
+
+		CommentUpdatedEvent result = service.updateComment("c1", "<b>Edited</b>", "user1", "USER");
+
+		assertEquals("&lt;b&gt;Edited&lt;/b&gt;", result.commentContent());
+		verify(mockRepo).updateContentById("c1", "&lt;b&gt;Edited&lt;/b&gt;");
+		assertEquals(1, stubRabbit.publishedEvents.size());
+	}
+
+	@Test
+	void updateComment_shouldAllowAdminToModerateAnotherUserComment() {
+		Comment comment = new Comment("user1", "bacaan1", "root", "Original");
+		comment.setId("c1");
+		comment.setCreatedAt(LocalDateTime.now(fixedClock));
+
+		when(mockRepo.findById("c1")).thenReturn(Optional.of(comment));
+
+		CommentUpdatedEvent result = service.updateComment("c1", "Cleaned", "admin-1", "ADMIN");
+
+		assertEquals("Cleaned", result.commentContent());
+		verify(mockRepo).updateContentById("c1", "Cleaned");
+	}
+
+	@Test
+	void updateComment_shouldRejectNonOwnerAndNonAdmin() {
+		Comment comment = new Comment("user1", "bacaan1", "root", "Original");
+		comment.setId("c1");
+		comment.setCreatedAt(LocalDateTime.now(fixedClock));
+
+		when(mockRepo.findById("c1")).thenReturn(Optional.of(comment));
+
+		ResponseStatusException exception = assertThrows(
+			ResponseStatusException.class,
+			() -> service.updateComment("c1", "Edited", "user2", "USER")
+		);
+
+		assertEquals(HttpStatus.FORBIDDEN, exception.getStatusCode());
+		verify(mockRepo, never()).updateContentById(anyString(), anyString());
+	}
+
+	@Test
+	void updateComment_withoutAuthenticatedActor_shouldReject() {
+		Comment comment = new Comment("user1", "bacaan1", "root", "Original");
+		comment.setId("c1");
+		comment.setCreatedAt(LocalDateTime.now(fixedClock));
+
+		when(mockRepo.findById("c1")).thenReturn(Optional.of(comment));
+
+		ResponseStatusException exception = assertThrows(
+			ResponseStatusException.class,
+			() -> service.updateComment("c1", "Edited")
+		);
+
+		assertEquals(HttpStatus.UNAUTHORIZED, exception.getStatusCode());
+		verify(mockRepo, never()).updateContentById(anyString(), anyString());
+	}
+
+	@Test
 	void addReaction_shouldIncrementCounter() {
 		Comment comment = new Comment("user1", "bacaan1", "content");
 		comment.setId("c1");
@@ -149,6 +229,54 @@ class CommentServiceImplTest {
 		when(mockRepo.findById("nonexistent")).thenReturn(Optional.empty());
 
 		assertThrows(ResponseStatusException.class, () -> service.addReaction("nonexistent", "user2", "upvote"));
+	}
+
+	@Test
+	void deleteComment_shouldAllowAuthorAndPublishEvent() {
+		Comment comment = new Comment("user1", "bacaan1", "root", "Original");
+		comment.setId("c1");
+		comment.setCreatedAt(LocalDateTime.now(fixedClock));
+
+		when(mockRepo.findById("c1")).thenReturn(Optional.of(comment));
+
+		CommentDeletedEvent result = service.deleteComment("c1", "user1", "USER");
+
+		assertEquals("c1", result.commentId());
+		verify(mockRepo).deleteById("c1");
+	}
+
+	@Test
+	void deleteComment_shouldRejectNonOwnerAndNonAdmin() {
+		Comment comment = new Comment("user1", "bacaan1", "root", "Original");
+		comment.setId("c1");
+		comment.setCreatedAt(LocalDateTime.now(fixedClock));
+
+		when(mockRepo.findById("c1")).thenReturn(Optional.of(comment));
+
+		ResponseStatusException exception = assertThrows(
+			ResponseStatusException.class,
+			() -> service.deleteComment("c1", "user2", "USER")
+		);
+
+		assertEquals(HttpStatus.FORBIDDEN, exception.getStatusCode());
+		verify(mockRepo, never()).deleteById(anyString());
+	}
+
+	@Test
+	void deleteComment_withoutAuthenticatedActor_shouldReject() {
+		Comment comment = new Comment("user1", "bacaan1", "root", "Original");
+		comment.setId("c1");
+		comment.setCreatedAt(LocalDateTime.now(fixedClock));
+
+		when(mockRepo.findById("c1")).thenReturn(Optional.of(comment));
+
+		ResponseStatusException exception = assertThrows(
+			ResponseStatusException.class,
+			() -> service.deleteComment("c1")
+		);
+
+		assertEquals(HttpStatus.UNAUTHORIZED, exception.getStatusCode());
+		verify(mockRepo, never()).deleteById(anyString());
 	}
 
 	@Test
