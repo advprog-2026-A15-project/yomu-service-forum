@@ -175,7 +175,8 @@ public class JdbcCommentRepository implements CommentRepository {
             case "laugh" -> "reaction_laugh";
             case "surprise" -> "reaction_surprise";
             case "sad" -> "reaction_sad";
-            default -> throw new IllegalArgumentException("Unknown reaction type: " + type);
+            default -> throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.BAD_REQUEST, "Tipe reaksi tidak valid: " + type);
         };
     }
 

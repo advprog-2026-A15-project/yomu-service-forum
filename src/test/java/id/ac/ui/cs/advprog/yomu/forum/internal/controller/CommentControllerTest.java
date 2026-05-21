@@ -119,6 +119,6 @@ class CommentControllerTest {
     }
 
     private UsernamePasswordAuthenticationToken auth(String userId) {
-        return new UsernamePasswordAuthenticationToken("username", userId, List.of());
+        return new UsernamePasswordAuthenticationToken(userId, null, List.of());
     }
 }
