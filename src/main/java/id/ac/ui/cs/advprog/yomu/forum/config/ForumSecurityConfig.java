@@ -40,6 +40,7 @@ public class ForumSecurityConfig {
         http
             .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(authz -> authz
+                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers("/actuator/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/forum/comments/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/forum/comments/**").authenticated()
