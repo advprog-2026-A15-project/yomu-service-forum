@@ -5,6 +5,7 @@ import id.ac.ui.cs.advprog.yomu.forum.internal.repository.CommentRepository;
 import id.ac.ui.cs.advprog.yomu.shared.event.CommentCreatedEvent;
 import id.ac.ui.cs.advprog.yomu.shared.event.CommentDeletedEvent;
 import id.ac.ui.cs.advprog.yomu.shared.event.CommentUpdatedEvent;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
@@ -27,6 +28,7 @@ class CommentServiceImplTest {
 	private CommentRepository mockRepo;
 	private RabbitTemplateStub stubRabbit;
 	private Clock fixedClock;
+	private SimpleMeterRegistry meterRegistry;
 	private CommentServiceImpl service;
 
 	@BeforeEach
@@ -34,7 +36,8 @@ class CommentServiceImplTest {
 		mockRepo = mock(CommentRepository.class);
 		stubRabbit = new RabbitTemplateStub();
 		fixedClock = Clock.fixed(Instant.parse("2026-04-23T10:00:00Z"), ZoneId.of("UTC"));
-		service = new CommentServiceImpl(mockRepo, stubRabbit, fixedClock);
+		meterRegistry = new SimpleMeterRegistry();
+		service = new CommentServiceImpl(mockRepo, stubRabbit, fixedClock, meterRegistry);
 	}
 
 	@Test
@@ -53,6 +56,7 @@ class CommentServiceImplTest {
 		assertEquals("Test content", result.commentContent());
 		assertEquals("comment-1", result.commentId());
 		assertEquals(1, stubRabbit.publishedEvents.size());
+		assertEquals(1.0, meterRegistry.counter("yomu_forum_comment_actions_total", "action", "create", "outcome", "success").count());
 	}
 
 	@Test

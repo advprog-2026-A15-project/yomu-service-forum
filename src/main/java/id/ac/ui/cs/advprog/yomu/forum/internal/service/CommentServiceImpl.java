@@ -5,6 +5,9 @@ import id.ac.ui.cs.advprog.yomu.shared.event.CommentDeletedEvent;
 import id.ac.ui.cs.advprog.yomu.shared.event.CommentUpdatedEvent;
 import id.ac.ui.cs.advprog.yomu.forum.internal.model.Comment;
 import id.ac.ui.cs.advprog.yomu.forum.internal.repository.CommentRepository;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -25,18 +28,24 @@ import java.util.Map;
 @Service
 public class CommentServiceImpl implements CommentService {
 	private static final Logger log = LoggerFactory.getLogger(CommentServiceImpl.class);
+	private static final String ACTION_COUNTER_METRIC = "yomu_forum_comment_actions_total";
+	private static final String ACTION_TIMER_METRIC = "yomu_forum_comment_action_duration";
+	private static final String REACTION_COUNTER_METRIC = "yomu_forum_comment_reactions_total";
 
 	private final CommentRepository commentRepository;
 	private final RabbitTemplate rabbitTemplate;
 	private final Clock clock;
+	private final MeterRegistry meterRegistry;
 
 	public CommentServiceImpl(
 			CommentRepository commentRepository,
 			RabbitTemplate rabbitTemplate,
-			Clock clock) {
+			Clock clock,
+			MeterRegistry meterRegistry) {
 		this.commentRepository = commentRepository;
 		this.rabbitTemplate = rabbitTemplate;
 		this.clock = clock;
+		this.meterRegistry = meterRegistry;
 	}
 
 	@Override
@@ -49,24 +58,33 @@ public class CommentServiceImpl implements CommentService {
 	@Transactional
 	public CommentCreatedEvent createComment(String userId, String bacaanId, String commentContent,
 			String parentComment) {
+		Timer.Sample sample = Timer.start(meterRegistry);
+		String outcome = "success";
 		String normalizedParent = (parentComment == null || parentComment.isBlank()) ? "root" : parentComment;
-		validateParentComment(bacaanId, normalizedParent);
+		try {
+			validateParentComment(bacaanId, normalizedParent);
 
-		Instant timestamp = clock.instant();
-		String sanitizedContent = sanitize(commentContent);
-		Comment comment = new Comment(userId, bacaanId, normalizedParent, sanitizedContent);
-		comment.setCreatedAt(LocalDateTime.ofInstant(timestamp, clock.getZone()));
+			Instant timestamp = clock.instant();
+			String sanitizedContent = sanitize(commentContent);
+			Comment comment = new Comment(userId, bacaanId, normalizedParent, sanitizedContent);
+			comment.setCreatedAt(LocalDateTime.ofInstant(timestamp, clock.getZone()));
 
-		Comment savedComment = commentRepository.save(comment);
-		CommentCreatedEvent event = new CommentCreatedEvent(
-				savedComment.getUserId(),
-				savedComment.getBacaanId(),
-				savedComment.getParentComment(),
-				savedComment.getId(),
-				sanitizedContent,
-				timestamp);
-		rabbitTemplate.convertAndSend("yomu.comment.created", event);
-		return event;
+			Comment savedComment = commentRepository.save(comment);
+			CommentCreatedEvent event = new CommentCreatedEvent(
+					savedComment.getUserId(),
+					savedComment.getBacaanId(),
+					savedComment.getParentComment(),
+					savedComment.getId(),
+					sanitizedContent,
+					timestamp);
+			rabbitTemplate.convertAndSend("yomu.comment.created", event);
+			return event;
+		} catch (RuntimeException ex) {
+			outcome = "failure";
+			throw ex;
+		} finally {
+			recordActionMetric("create", outcome, sample);
+		}
 	}
 
 	@Override
@@ -78,28 +96,37 @@ public class CommentServiceImpl implements CommentService {
 	@Override
 	@Transactional
 	public CommentUpdatedEvent updateComment(String commentId, String commentContent, String userId, String role) {
-		Comment existingComment = getCommentOrThrow(commentId);
-		validateModerationPermission(existingComment, userId, role, "mengedit");
+		Timer.Sample sample = Timer.start(meterRegistry);
+		String outcome = "success";
+		try {
+			Comment existingComment = getCommentOrThrow(commentId);
+			validateModerationPermission(existingComment, userId, role, "mengedit");
 
-		Instant timestamp = clock.instant();
-		String sanitizedContent = sanitize(commentContent);
-		commentRepository.updateContentById(commentId, sanitizedContent);
-		log.info(
-			"Moderation update on comment {} by user {} as {}",
-			commentId,
-			userId,
-			isAdmin(role) ? "admin" : "author"
-		);
-
-		CommentUpdatedEvent event = new CommentUpdatedEvent(
-				existingComment.getUserId(),
-				existingComment.getBacaanId(),
-				existingComment.getParentComment(),
+			Instant timestamp = clock.instant();
+			String sanitizedContent = sanitize(commentContent);
+			commentRepository.updateContentById(commentId, sanitizedContent);
+			log.info(
+				"Moderation update on comment {} by user {} as {}",
 				commentId,
-				sanitizedContent,
-				timestamp);
-		rabbitTemplate.convertAndSend("yomu.comment.updated", event);
-		return event;
+				userId,
+				isAdmin(role) ? "admin" : "author"
+			);
+
+			CommentUpdatedEvent event = new CommentUpdatedEvent(
+					existingComment.getUserId(),
+					existingComment.getBacaanId(),
+					existingComment.getParentComment(),
+					commentId,
+					sanitizedContent,
+					timestamp);
+			rabbitTemplate.convertAndSend("yomu.comment.updated", event);
+			return event;
+		} catch (RuntimeException ex) {
+			outcome = "failure";
+			throw ex;
+		} finally {
+			recordActionMetric("update", outcome, sample);
+		}
 	}
 
 	@Override
@@ -111,75 +138,113 @@ public class CommentServiceImpl implements CommentService {
 	@Override
 	@Transactional
 	public CommentDeletedEvent deleteComment(String commentId, String userId, String role) {
-		Comment existingComment = getCommentOrThrow(commentId);
-		validateModerationPermission(existingComment, userId, role, "menghapus");
+		Timer.Sample sample = Timer.start(meterRegistry);
+		String outcome = "success";
+		try {
+			Comment existingComment = getCommentOrThrow(commentId);
+			validateModerationPermission(existingComment, userId, role, "menghapus");
 
-		Instant timestamp = clock.instant();
-		commentRepository.deleteById(commentId);
-		log.info(
-			"Moderation delete on comment {} by user {} as {}",
-			commentId,
-			userId,
-			isAdmin(role) ? "admin" : "author"
-		);
+			Instant timestamp = clock.instant();
+			commentRepository.deleteById(commentId);
+			log.info(
+				"Moderation delete on comment {} by user {} as {}",
+				commentId,
+				userId,
+				isAdmin(role) ? "admin" : "author"
+			);
 
-		CommentDeletedEvent event = new CommentDeletedEvent(
-				existingComment.getUserId(),
-				existingComment.getBacaanId(),
-				existingComment.getParentComment(),
-				existingComment.getId(),
-				existingComment.getContent(),
-				timestamp);
-		rabbitTemplate.convertAndSend("yomu.comment.deleted", event);
-		return event;
+			CommentDeletedEvent event = new CommentDeletedEvent(
+					existingComment.getUserId(),
+					existingComment.getBacaanId(),
+					existingComment.getParentComment(),
+					existingComment.getId(),
+					existingComment.getContent(),
+					timestamp);
+			rabbitTemplate.convertAndSend("yomu.comment.deleted", event);
+			return event;
+		} catch (RuntimeException ex) {
+			outcome = "failure";
+			throw ex;
+		} finally {
+			recordActionMetric("delete", outcome, sample);
+		}
 	}
 
 	@Override
 	@Transactional
 	public void addReaction(String commentId, String userId, String reactionType) {
-		getCommentOrThrow(commentId);
-		commentRepository.addReaction(commentId, userId, reactionType);
+		Timer.Sample sample = Timer.start(meterRegistry);
+		String outcome = "success";
+		try {
+			getCommentOrThrow(commentId);
+			commentRepository.addReaction(commentId, userId, reactionType);
+			recordReactionMetric(reactionType, "success");
+		} catch (RuntimeException ex) {
+			outcome = "failure";
+			recordReactionMetric(reactionType, "failure");
+			throw ex;
+		} finally {
+			recordActionMetric("react", outcome, sample);
+		}
 	}
 
 	@Override
 	public List<CommentResponse> listComments(String bacaanId) {
-		List<Comment> comments = (bacaanId == null || bacaanId.isBlank())
-				? commentRepository.findAll()
-				: commentRepository.findByBacaanId(bacaanId);
+		Timer.Sample sample = Timer.start(meterRegistry);
+		String outcome = "success";
+		try {
+			List<Comment> comments = (bacaanId == null || bacaanId.isBlank())
+					? commentRepository.findAll()
+					: commentRepository.findByBacaanId(bacaanId);
 
-		return comments.stream()
-				.map(this::toCommentResponse)
-				.toList();
+			return comments.stream()
+					.map(this::toCommentResponse)
+					.toList();
+		} catch (RuntimeException ex) {
+			outcome = "failure";
+			throw ex;
+		} finally {
+			recordActionMetric("list", outcome, sample);
+		}
 	}
 
 	@Override
 	public List<CommentTreeResponse> listCommentsTree(String bacaanId) {
-		List<Comment> comments = (bacaanId == null || bacaanId.isBlank())
-				? commentRepository.findAll()
-				: commentRepository.findByBacaanId(bacaanId);
+		Timer.Sample sample = Timer.start(meterRegistry);
+		String outcome = "success";
+		try {
+			List<Comment> comments = (bacaanId == null || bacaanId.isBlank())
+					? commentRepository.findAll()
+					: commentRepository.findByBacaanId(bacaanId);
 
-		Map<String, MutableTreeNode> nodesById = new LinkedHashMap<>();
-		for (Comment comment : comments) {
-			nodesById.put(comment.getId(), new MutableTreeNode(comment));
-		}
-
-		List<MutableTreeNode> roots = new ArrayList<>();
-		for (MutableTreeNode node : nodesById.values()) {
-			if ("root".equals(node.comment.getParentComment())) {
-				roots.add(node);
-				continue;
+			Map<String, MutableTreeNode> nodesById = new LinkedHashMap<>();
+			for (Comment comment : comments) {
+				nodesById.put(comment.getId(), new MutableTreeNode(comment));
 			}
 
-			MutableTreeNode parent = nodesById.get(node.comment.getParentComment());
-			if (parent == null) {
-				roots.add(node);
-				continue;
+			List<MutableTreeNode> roots = new ArrayList<>();
+			for (MutableTreeNode node : nodesById.values()) {
+				if ("root".equals(node.comment.getParentComment())) {
+					roots.add(node);
+					continue;
+				}
+
+				MutableTreeNode parent = nodesById.get(node.comment.getParentComment());
+				if (parent == null) {
+					roots.add(node);
+					continue;
+				}
+
+				parent.children.add(node);
 			}
 
-			parent.children.add(node);
+			return roots.stream().map(this::toTreeResponse).toList();
+		} catch (RuntimeException ex) {
+			outcome = "failure";
+			throw ex;
+		} finally {
+			recordActionMetric("tree", outcome, sample);
 		}
-
-		return roots.stream().map(this::toTreeResponse).toList();
 	}
 
 	@Override
@@ -282,5 +347,26 @@ public class CommentServiceImpl implements CommentService {
 				.replace(">", "&gt;")
 				.replace("\"", "&quot;")
 				.replace("'", "&#39;");
+	}
+
+	private void recordActionMetric(String action, String outcome, Timer.Sample sample) {
+		Counter.builder(ACTION_COUNTER_METRIC)
+				.tag("action", action)
+				.tag("outcome", outcome)
+				.register(meterRegistry)
+				.increment();
+		sample.stop(Timer.builder(ACTION_TIMER_METRIC)
+				.tag("action", action)
+				.tag("outcome", outcome)
+				.publishPercentileHistogram()
+				.register(meterRegistry));
+	}
+
+	private void recordReactionMetric(String reactionType, String outcome) {
+		Counter.builder(REACTION_COUNTER_METRIC)
+				.tag("reaction_type", reactionType == null || reactionType.isBlank() ? "unknown" : reactionType)
+				.tag("outcome", outcome)
+				.register(meterRegistry)
+				.increment();
 	}
 }
