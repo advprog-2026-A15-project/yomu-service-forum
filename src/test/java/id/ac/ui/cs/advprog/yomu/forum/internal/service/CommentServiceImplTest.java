@@ -55,7 +55,9 @@ class CommentServiceImplTest {
 		assertEquals("bacaan1", result.bacaanId());
 		assertEquals("Test content", result.commentContent());
 		assertEquals("comment-1", result.commentId());
-		assertEquals(1, stubRabbit.publishedEvents.size());
+		assertEquals(1, stubRabbit.published.size());
+		assertEquals("yomu.comment.created", stubRabbit.published.getFirst().routingKey());
+		assertInstanceOf(CommentCreatedEvent.class, stubRabbit.published.getFirst().payload());
 		assertEquals(1.0, meterRegistry.counter("yomu_forum_comment_actions_total", "action", "create", "outcome", "success").count());
 	}
 
@@ -148,7 +150,9 @@ class CommentServiceImplTest {
 
 		assertEquals("&lt;b&gt;Edited&lt;/b&gt;", result.commentContent());
 		verify(mockRepo).updateContentById("c1", "&lt;b&gt;Edited&lt;/b&gt;");
-		assertEquals(1, stubRabbit.publishedEvents.size());
+		assertEquals(1, stubRabbit.published.size());
+		assertEquals("yomu.comment.updated", stubRabbit.published.getFirst().routingKey());
+		assertInstanceOf(CommentUpdatedEvent.class, stubRabbit.published.getFirst().payload());
 	}
 
 	@Test
@@ -247,6 +251,24 @@ class CommentServiceImplTest {
 
 		assertEquals("c1", result.commentId());
 		verify(mockRepo).deleteById("c1");
+		assertEquals(1, stubRabbit.published.size());
+		assertEquals("yomu.comment.deleted", stubRabbit.published.getFirst().routingKey());
+		assertInstanceOf(CommentDeletedEvent.class, stubRabbit.published.getFirst().payload());
+	}
+
+	@Test
+	void deleteComment_shouldAllowAdminToDeleteAnotherUserComment() {
+		Comment comment = new Comment("user1", "bacaan1", "root", "Original");
+		comment.setId("c1");
+		comment.setCreatedAt(LocalDateTime.now(fixedClock));
+
+		when(mockRepo.findById("c1")).thenReturn(Optional.of(comment));
+
+		CommentDeletedEvent result = service.deleteComment("c1", "admin-1", "ADMIN");
+
+		assertEquals("c1", result.commentId());
+		verify(mockRepo).deleteById("c1");
+		assertEquals("yomu.comment.deleted", stubRabbit.published.getFirst().routingKey());
 	}
 
 	@Test
@@ -373,14 +395,35 @@ class CommentServiceImplTest {
 		List<CommentTreeResponse> trees = service.listCommentsTree(null);
 
 		assertEquals(1, trees.size());
+		assertEquals("root-1", trees.getFirst().id());
+		assertEquals(1, trees.getFirst().replies().size());
+		assertEquals("child-1", trees.getFirst().replies().getFirst().id());
+		assertEquals("Child comment", trees.getFirst().replies().getFirst().content());
+	}
+
+	@Test
+	void listCommentsTree_orphanChildPromotedToRootWhenParentMissing() {
+		Comment orphan = new Comment("user2", "bacaan1", "missing-parent", "Orphan");
+		orphan.setId("orphan-1");
+		orphan.setCreatedAt(LocalDateTime.now(fixedClock));
+
+		when(mockRepo.findAll()).thenReturn(List.of(orphan));
+
+		List<CommentTreeResponse> trees = service.listCommentsTree(null);
+
+		assertEquals(1, trees.size());
+		assertEquals("orphan-1", trees.getFirst().id());
+		assertTrue(trees.getFirst().replies().isEmpty());
 	}
 
 	static class RabbitTemplateStub extends org.springframework.amqp.rabbit.core.RabbitTemplate {
-		java.util.List<Object> publishedEvents = new java.util.ArrayList<>();
+		record Published(String routingKey, Object payload) {}
+
+		final java.util.List<Published> published = new java.util.ArrayList<>();
 
 		@Override
-		public void convertAndSend(String exchange, Object message) {
-			publishedEvents.add(message);
+		public void convertAndSend(String routingKey, Object message) {
+			published.add(new Published(routingKey, message));
 		}
 	}
 }

@@ -3,10 +3,13 @@ package id.ac.ui.cs.advprog.yomu.forum.internal.controller;
 import id.ac.ui.cs.advprog.yomu.forum.internal.service.CommentResponse;
 import id.ac.ui.cs.advprog.yomu.forum.internal.service.CommentService;
 import id.ac.ui.cs.advprog.yomu.shared.event.CommentCreatedEvent;
+import id.ac.ui.cs.advprog.yomu.shared.event.CommentDeletedEvent;
+import id.ac.ui.cs.advprog.yomu.shared.event.CommentUpdatedEvent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
@@ -43,7 +46,7 @@ class CommentControllerTest {
             .thenReturn(event);
 
         var response = controller.createComment(
-            new CreateCommentRequest("spoofed-user", "bacaan-1", "Test", "root"),
+            new CreateCommentRequest("bacaan-1", "Test", "root"),
             auth("user-1")
         );
 
@@ -110,7 +113,7 @@ class CommentControllerTest {
         ResponseStatusException exception = assertThrows(
             ResponseStatusException.class,
             () -> controller.createComment(
-                new CreateCommentRequest("user-1", "bacaan-1", "Test", "root"),
+                new CreateCommentRequest("bacaan-1", "Test", "root"),
                 null
             )
         );
@@ -118,7 +121,67 @@ class CommentControllerTest {
         assertEquals(HttpStatus.UNAUTHORIZED, exception.getStatusCode());
     }
 
+    @Test
+    void updateCommentPassesUserIdAndStrippedAdminRole() {
+        CommentUpdatedEvent event = new CommentUpdatedEvent(
+            "user-1",
+            "bacaan-1",
+            "root",
+            "comment-1",
+            "Edited",
+            Instant.now()
+        );
+        when(commentService.updateComment("comment-1", "Edited", "admin-1", "ADMIN"))
+            .thenReturn(event);
+
+        CommentUpdatedEvent result = controller.updateComment(
+            "comment-1",
+            new UpdateCommentRequest("Edited"),
+            authWithRole("admin-1", "ADMIN")
+        );
+
+        verify(commentService).updateComment("comment-1", "Edited", "admin-1", "ADMIN");
+        assertEquals("Edited", result.commentContent());
+    }
+
+    @Test
+    void deleteCommentWithoutAuthenticationThrowsUnauthorized() {
+        ResponseStatusException exception = assertThrows(
+            ResponseStatusException.class,
+            () -> controller.deleteComment("comment-1", null)
+        );
+
+        assertEquals(HttpStatus.UNAUTHORIZED, exception.getStatusCode());
+    }
+
+    @Test
+    void deleteCommentPassesUserIdAndRoleToService() {
+        CommentDeletedEvent event = new CommentDeletedEvent(
+            "user-1",
+            "bacaan-1",
+            "root",
+            "comment-1",
+            "Content",
+            Instant.now()
+        );
+        when(commentService.deleteComment("comment-1", "user-1", null))
+            .thenReturn(event);
+
+        CommentDeletedEvent result = controller.deleteComment("comment-1", auth("user-1"));
+
+        verify(commentService).deleteComment("comment-1", "user-1", null);
+        assertEquals("comment-1", result.commentId());
+    }
+
     private UsernamePasswordAuthenticationToken auth(String userId) {
         return new UsernamePasswordAuthenticationToken(userId, null, List.of());
+    }
+
+    private UsernamePasswordAuthenticationToken authWithRole(String userId, String role) {
+        return new UsernamePasswordAuthenticationToken(
+            userId,
+            null,
+            List.of(new SimpleGrantedAuthority("ROLE_" + role))
+        );
     }
 }
