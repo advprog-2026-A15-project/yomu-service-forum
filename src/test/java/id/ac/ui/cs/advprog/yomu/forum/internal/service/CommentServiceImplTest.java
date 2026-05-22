@@ -402,6 +402,52 @@ class CommentServiceImplTest {
 	}
 
 	@Test
+	void createComment_threeArgOverload_defaultsParentToRoot() {
+		Comment saved = new Comment("user1", "bacaan1", "root", "Test");
+		saved.setId("comment-1");
+		saved.setCreatedAt(LocalDateTime.now(fixedClock));
+
+		when(mockRepo.save(any(Comment.class))).thenReturn(saved);
+
+		CommentCreatedEvent result = service.createComment("user1", "bacaan1", "Test");
+
+		assertEquals("root", result.parentComment());
+		verify(mockRepo).save(argThat(c -> "root".equals(c.getParentComment())));
+	}
+
+	@Test
+	void updateComment_twoArgOverload_requiresAuthenticatedActor() {
+		Comment comment = new Comment("user1", "bacaan1", "root", "Original");
+		comment.setId("c1");
+		comment.setCreatedAt(LocalDateTime.now(fixedClock));
+
+		when(mockRepo.findById("c1")).thenReturn(Optional.of(comment));
+
+		ResponseStatusException exception = assertThrows(
+			ResponseStatusException.class,
+			() -> service.updateComment("c1", "Edited")
+		);
+
+		assertEquals(HttpStatus.UNAUTHORIZED, exception.getStatusCode());
+	}
+
+	@Test
+	void deleteComment_oneArgOverload_requiresAuthenticatedActor() {
+		Comment comment = new Comment("user1", "bacaan1", "root", "Original");
+		comment.setId("c1");
+		comment.setCreatedAt(LocalDateTime.now(fixedClock));
+
+		when(mockRepo.findById("c1")).thenReturn(Optional.of(comment));
+
+		ResponseStatusException exception = assertThrows(
+			ResponseStatusException.class,
+			() -> service.deleteComment("c1")
+		);
+
+		assertEquals(HttpStatus.UNAUTHORIZED, exception.getStatusCode());
+	}
+
+	@Test
 	void listCommentsTree_orphanChildPromotedToRootWhenParentMissing() {
 		Comment orphan = new Comment("user2", "bacaan1", "missing-parent", "Orphan");
 		orphan.setId("orphan-1");
