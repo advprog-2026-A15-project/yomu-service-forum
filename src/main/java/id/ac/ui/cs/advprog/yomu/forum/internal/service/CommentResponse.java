@@ -5,6 +5,8 @@ import java.time.Instant;
 public record CommentResponse(
 		String id,
 		String userId,
+		String username,
+		String displayName,
 		String bacaanId,
 		String parentComment,
 		String content,

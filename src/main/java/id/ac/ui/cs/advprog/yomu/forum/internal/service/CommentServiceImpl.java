@@ -36,16 +36,19 @@ public class CommentServiceImpl implements CommentService {
 	private final RabbitTemplate rabbitTemplate;
 	private final Clock clock;
 	private final MeterRegistry meterRegistry;
+	private final CommentAuthorResolver authorResolver;
 
 	public CommentServiceImpl(
 			CommentRepository commentRepository,
 			RabbitTemplate rabbitTemplate,
 			Clock clock,
-			MeterRegistry meterRegistry) {
+			MeterRegistry meterRegistry,
+			CommentAuthorResolver authorResolver) {
 		this.commentRepository = commentRepository;
 		this.rabbitTemplate = rabbitTemplate;
 		this.clock = clock;
 		this.meterRegistry = meterRegistry;
+		this.authorResolver = authorResolver;
 	}
 
 	@Override
@@ -196,9 +199,10 @@ public class CommentServiceImpl implements CommentService {
 			List<Comment> comments = (bacaanId == null || bacaanId.isBlank())
 					? commentRepository.findAll()
 					: commentRepository.findByBacaanId(bacaanId);
+			Map<String, CommentAuthorProfile> authorProfiles = resolveAuthorProfiles(comments);
 
 			return comments.stream()
-					.map(this::toCommentResponse)
+					.map(comment -> toCommentResponse(comment, authorProfiles.get(comment.getUserId())))
 					.toList();
 		} catch (RuntimeException ex) {
 			outcome = "failure";
@@ -216,6 +220,7 @@ public class CommentServiceImpl implements CommentService {
 			List<Comment> comments = (bacaanId == null || bacaanId.isBlank())
 					? commentRepository.findAll()
 					: commentRepository.findByBacaanId(bacaanId);
+			Map<String, CommentAuthorProfile> authorProfiles = resolveAuthorProfiles(comments);
 
 			Map<String, MutableTreeNode> nodesById = new LinkedHashMap<>();
 			for (Comment comment : comments) {
@@ -238,7 +243,7 @@ public class CommentServiceImpl implements CommentService {
 				parent.children.add(node);
 			}
 
-			return roots.stream().map(this::toTreeResponse).toList();
+			return roots.stream().map(root -> toTreeResponse(root, authorProfiles)).toList();
 		} catch (RuntimeException ex) {
 			outcome = "failure";
 			throw ex;
@@ -250,13 +255,16 @@ public class CommentServiceImpl implements CommentService {
 	@Override
 	public CommentResponse getComment(String commentId) {
 		Comment comment = getCommentOrThrow(commentId);
-		return toCommentResponse(comment);
+		return toCommentResponse(comment, resolveAuthorProfile(comment.getUserId()));
 	}
 
-	private CommentResponse toCommentResponse(Comment comment) {
+	private CommentResponse toCommentResponse(Comment comment, CommentAuthorProfile authorProfile) {
+		CommentAuthorProfile profile = authorProfile == null ? CommentAuthorProfile.empty() : authorProfile;
 		return new CommentResponse(
 				comment.getId(),
 				comment.getUserId(),
+				profile.username(),
+				profile.displayName(),
 				comment.getBacaanId(),
 				comment.getParentComment(),
 				comment.getContent(),
@@ -270,10 +278,18 @@ public class CommentServiceImpl implements CommentService {
 				comment.getReactionSad());
 	}
 
-	private CommentTreeResponse toTreeResponse(MutableTreeNode node) {
+	private CommentTreeResponse toTreeResponse(
+			MutableTreeNode node,
+			Map<String, CommentAuthorProfile> authorProfiles) {
+		CommentAuthorProfile profile = authorProfiles.getOrDefault(
+				node.comment.getUserId(),
+				CommentAuthorProfile.empty()
+		);
 		return new CommentTreeResponse(
 				node.comment.getId(),
 				node.comment.getUserId(),
+				profile.username(),
+				profile.displayName(),
 				node.comment.getBacaanId(),
 				node.comment.getParentComment(),
 				node.comment.getContent(),
@@ -285,7 +301,19 @@ public class CommentServiceImpl implements CommentService {
 				node.comment.getReactionLaugh(),
 				node.comment.getReactionSurprise(),
 				node.comment.getReactionSad(),
-				node.children.stream().map(this::toTreeResponse).toList());
+				node.children.stream().map(child -> toTreeResponse(child, authorProfiles)).toList());
+	}
+
+	private Map<String, CommentAuthorProfile> resolveAuthorProfiles(List<Comment> comments) {
+		Map<String, CommentAuthorProfile> profiles = new LinkedHashMap<>();
+		for (Comment comment : comments) {
+			profiles.computeIfAbsent(comment.getUserId(), this::resolveAuthorProfile);
+		}
+		return profiles;
+	}
+
+	private CommentAuthorProfile resolveAuthorProfile(String userId) {
+		return authorResolver.resolve(userId).orElse(CommentAuthorProfile.empty());
 	}
 
 	private static final class MutableTreeNode {

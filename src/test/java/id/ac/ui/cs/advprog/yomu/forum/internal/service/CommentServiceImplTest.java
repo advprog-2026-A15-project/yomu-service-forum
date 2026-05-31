@@ -37,7 +37,13 @@ class CommentServiceImplTest {
 		stubRabbit = new RabbitTemplateStub();
 		fixedClock = Clock.fixed(Instant.parse("2026-04-23T10:00:00Z"), ZoneId.of("UTC"));
 		meterRegistry = new SimpleMeterRegistry();
-		service = new CommentServiceImpl(mockRepo, stubRabbit, fixedClock, meterRegistry);
+		service = new CommentServiceImpl(
+				mockRepo,
+				stubRabbit,
+				fixedClock,
+				meterRegistry,
+				userId -> Optional.empty()
+		);
 	}
 
 	@Test
@@ -325,6 +331,27 @@ class CommentServiceImplTest {
 		assertEquals(5, result.upvotes());
 		assertEquals(1, result.downvotes());
 		assertEquals(3, result.thumbsUp());
+	}
+
+	@Test
+	void getComment_shouldResolveAuthorUsername() {
+		Comment comment = new Comment("user1", "bacaan1", "Test content");
+		comment.setId("c1");
+		comment.setCreatedAt(LocalDateTime.now(fixedClock));
+		service = new CommentServiceImpl(
+				mockRepo,
+				stubRabbit,
+				fixedClock,
+				meterRegistry,
+				userId -> Optional.of(new CommentAuthorProfile("tirta.rendy", "Tirta Rendy"))
+		);
+
+		when(mockRepo.findById("c1")).thenReturn(Optional.of(comment));
+
+		CommentResponse result = service.getComment("c1");
+
+		assertEquals("tirta.rendy", result.username());
+		assertEquals("Tirta Rendy", result.displayName());
 	}
 
 	@Test

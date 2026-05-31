@@ -6,6 +6,8 @@ import java.util.List;
 public record CommentTreeResponse(
 		String id,
 		String userId,
+		String username,
+		String displayName,
 		String bacaanId,
 		String parentComment,
 		String content,

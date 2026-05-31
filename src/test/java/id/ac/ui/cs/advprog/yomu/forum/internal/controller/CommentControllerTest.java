@@ -59,6 +59,8 @@ class CommentControllerTest {
         CommentResponse updated = new CommentResponse(
             "comment-1",
             "user-1",
+            "tirta.rendy",
+            "Tirta Rendy",
             "bacaan-1",
             "root",
             "Content",
@@ -88,6 +90,8 @@ class CommentControllerTest {
         CommentResponse comment = new CommentResponse(
             "comment-1",
             "user-1",
+            "tirta.rendy",
+            "Tirta Rendy",
             "bacaan-1",
             "root",
             "Content",
