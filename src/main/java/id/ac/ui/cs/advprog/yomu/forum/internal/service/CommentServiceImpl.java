@@ -93,7 +93,8 @@ public class CommentServiceImpl implements CommentService {
 	@Override
 	@Transactional
 	public CommentUpdatedEvent updateComment(String commentId, String commentContent) {
-		return updateComment(commentId, commentContent, null, null);
+		CommentUpdatedEvent evt = updateComment(commentId, commentContent, null, null);
+		return evt;
 	}
 
 	@Override
@@ -135,7 +136,8 @@ public class CommentServiceImpl implements CommentService {
 	@Override
 	@Transactional
 	public CommentDeletedEvent deleteComment(String commentId) {
-		return deleteComment(commentId, null, null);
+		CommentDeletedEvent evt = deleteComment(commentId, null, null);
+		return evt;
 	}
 
 	@Override

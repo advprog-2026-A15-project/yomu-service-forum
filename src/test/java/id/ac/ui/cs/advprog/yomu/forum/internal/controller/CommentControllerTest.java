@@ -1,6 +1,7 @@
 package id.ac.ui.cs.advprog.yomu.forum.internal.controller;
 
 import id.ac.ui.cs.advprog.yomu.forum.internal.service.CommentResponse;
+import id.ac.ui.cs.advprog.yomu.forum.internal.service.CommentTreeResponse;
 import id.ac.ui.cs.advprog.yomu.forum.internal.service.CommentService;
 import id.ac.ui.cs.advprog.yomu.shared.event.CommentCreatedEvent;
 import id.ac.ui.cs.advprog.yomu.shared.event.CommentDeletedEvent;
@@ -146,6 +147,69 @@ class CommentControllerTest {
 
         verify(commentService).updateComment("comment-1", "Edited", "admin-1", "ADMIN");
         assertEquals("Edited", result.commentContent());
+    }
+
+    @Test
+    void updateCommentWithNoAuthorities_passesNullRoleToService() {
+        CommentUpdatedEvent event = new CommentUpdatedEvent(
+            "user-1",
+            "bacaan-1",
+            "root",
+            "comment-1",
+            "Edited",
+            Instant.now()
+        );
+        when(commentService.updateComment("comment-1", "Edited", "user-1", null))
+            .thenReturn(event);
+
+        CommentUpdatedEvent result = controller.updateComment(
+            "comment-1",
+            new UpdateCommentRequest("Edited"),
+            auth("user-1")
+        );
+
+        verify(commentService).updateComment("comment-1", "Edited", "user-1", null);
+        assertEquals("Edited", result.commentContent());
+    }
+
+    @Test
+    void getCommentsTreeReturnsServiceData() {
+        CommentTreeResponse tree = new CommentTreeResponse(
+            "c1",
+            "user-1",
+            "tirta.rendy",
+            "Tirta Rendy",
+            "bacaan-1",
+            "root",
+            "Content",
+            Instant.now(),
+            0,0,0,0,0,0,0, java.util.List.<CommentTreeResponse>of()
+        );
+        when(commentService.listCommentsTree(null)).thenReturn(List.of(tree));
+
+        List<CommentTreeResponse> result = controller.getCommentsTree(null);
+
+        assertEquals(1, result.size());
+        assertEquals("c1", result.getFirst().id());
+    }
+
+    @Test
+    void deleteCommentWithRole_passesRoleToService() {
+        CommentDeletedEvent event = new CommentDeletedEvent(
+            "user-1",
+            "bacaan-1",
+            "root",
+            "comment-1",
+            "Content",
+            Instant.now()
+        );
+        when(commentService.deleteComment("comment-1", "user-1", "ADMIN"))
+            .thenReturn(event);
+
+        CommentDeletedEvent result = controller.deleteComment("comment-1", authWithRole("user-1", "ADMIN"));
+
+        verify(commentService).deleteComment("comment-1", "user-1", "ADMIN");
+        assertEquals("comment-1", result.commentId());
     }
 
     @Test
