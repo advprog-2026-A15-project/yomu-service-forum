@@ -26,7 +26,6 @@ class GrpcCommentAuthorResolverTest {
         resolver = new GrpcCommentAuthorResolver();
         stub = mock(AuthServiceGrpcGrpc.AuthServiceGrpcBlockingStub.class);
 
-        // inject mocked stub into private field
         Field f = GrpcCommentAuthorResolver.class.getDeclaredField("authServiceStub");
         f.setAccessible(true);
         f.set(resolver, stub);
@@ -47,6 +46,7 @@ class GrpcCommentAuthorResolverTest {
         when(stub.getUserById(any(GetUserByIdRequest.class))).thenReturn(resp);
 
         Optional<CommentAuthorProfile> result = resolver.resolve("user-1");
+
         assertTrue(result.isPresent());
         assertEquals("tirta.rendy", result.get().username());
         assertEquals("Tirta Rendy", result.get().displayName());
@@ -61,6 +61,7 @@ class GrpcCommentAuthorResolverTest {
         when(stub.getUserById(any(GetUserByIdRequest.class))).thenReturn(resp);
 
         Optional<CommentAuthorProfile> result = resolver.resolve("user-1");
+
         assertTrue(result.isPresent());
         assertNull(result.get().username());
         assertNull(result.get().displayName());

@@ -76,9 +76,9 @@ public class CommentController {
 		Authentication auth
 	) {
 		String userId = authenticatedUserId(auth);
-		String role = auth != null ? auth.getAuthorities().stream()
+		String role = auth.getAuthorities().stream()
 			.map(a -> a.getAuthority().replace("ROLE_", ""))
-			.findFirst().orElse(null) : null;
+			.findFirst().orElse(null);
 		return commentService.updateComment(commentId, request.commentContent(), userId, role);
 	}
 
@@ -88,9 +88,9 @@ public class CommentController {
 		Authentication auth
 	) {
 		String userId = authenticatedUserId(auth);
-		String role = auth != null ? auth.getAuthorities().stream()
+		String role = auth.getAuthorities().stream()
 			.map(a -> a.getAuthority().replace("ROLE_", ""))
-			.findFirst().orElse(null) : null;
+			.findFirst().orElse(null);
 		return commentService.deleteComment(commentId, userId, role);
 	}
 

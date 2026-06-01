@@ -2,6 +2,7 @@ package id.ac.ui.cs.advprog.yomu.forum.internal.service;
 
 import id.ac.ui.cs.advprog.yomu.forum.internal.model.Comment;
 import id.ac.ui.cs.advprog.yomu.forum.internal.repository.CommentRepository;
+import id.ac.ui.cs.advprog.yomu.forum.internal.service.CommentTreeResponse;
 import id.ac.ui.cs.advprog.yomu.shared.event.CommentCreatedEvent;
 import id.ac.ui.cs.advprog.yomu.shared.event.CommentDeletedEvent;
 import id.ac.ui.cs.advprog.yomu.shared.event.CommentUpdatedEvent;
@@ -487,6 +488,145 @@ class CommentServiceImplTest {
 		assertEquals(1, trees.size());
 		assertEquals("orphan-1", trees.getFirst().id());
 		assertTrue(trees.getFirst().replies().isEmpty());
+	}
+
+	@Test
+	void comment_constructorWithNullParent_defaultsToRoot() {
+		Comment comment = new Comment("user1", "bacaan1", null, "content");
+		assertEquals("root", comment.getParentComment());
+	}
+
+	@Test
+	void comment_constructorWithBlankParent_defaultsToRoot() {
+		Comment comment = new Comment("user1", "bacaan1", "   ", "content");
+		assertEquals("root", comment.getParentComment());
+	}
+
+	@Test
+	void listComments_whenRepositoryThrows_propagatesException() {
+		when(mockRepo.findAll()).thenThrow(new RuntimeException("DB error"));
+
+		assertThrows(RuntimeException.class, () -> service.listComments(null));
+	}
+
+	@Test
+	void listComments_withBlankBacaanId_returnsAll() {
+		when(mockRepo.findAll()).thenReturn(List.of());
+
+		List<CommentResponse> results = service.listComments("   ");
+
+		assertNotNull(results);
+		verify(mockRepo).findAll();
+	}
+
+	@Test
+	void deleteComment_withBlankUserId_shouldRejectWithUnauthorized() {
+		Comment comment = new Comment("user1", "bacaan1", "root", "Original");
+		comment.setId("c1");
+		comment.setCreatedAt(LocalDateTime.now(fixedClock));
+
+		when(mockRepo.findById("c1")).thenReturn(Optional.of(comment));
+
+		ResponseStatusException exception = assertThrows(
+			ResponseStatusException.class,
+			() -> service.deleteComment("c1", "  ", "USER")
+		);
+
+		assertEquals(HttpStatus.UNAUTHORIZED, exception.getStatusCode());
+	}
+
+	@Test
+	void listCommentsTree_whenRepositoryThrows_propagatesException() {
+		when(mockRepo.findByBacaanId("bacaan1")).thenThrow(new RuntimeException("DB error"));
+
+		assertThrows(RuntimeException.class, () -> service.listCommentsTree("bacaan1"));
+	}
+
+	@Test
+	void updateComment_withBlankUserId_shouldRejectWithUnauthorized() {
+		Comment comment = new Comment("user1", "bacaan1", "root", "Original");
+		comment.setId("c1");
+		comment.setCreatedAt(LocalDateTime.now(fixedClock));
+
+		when(mockRepo.findById("c1")).thenReturn(Optional.of(comment));
+
+		ResponseStatusException exception = assertThrows(
+			ResponseStatusException.class,
+			() -> service.updateComment("c1", "Edited", "  ", "USER")
+		);
+
+		assertEquals(HttpStatus.UNAUTHORIZED, exception.getStatusCode());
+	}
+
+	@Test
+	void updateComment_withNullRole_authorIsAllowed() {
+		Comment comment = new Comment("user1", "bacaan1", "root", "Original");
+		comment.setId("c1");
+		comment.setCreatedAt(LocalDateTime.now(fixedClock));
+
+		when(mockRepo.findById("c1")).thenReturn(Optional.of(comment));
+		when(mockRepo.updateContentById(anyString(), anyString())).thenReturn(1);
+
+		CommentUpdatedEvent result = service.updateComment("c1", "Edited", "user1", null);
+
+		assertNotNull(result);
+		assertEquals("Edited", result.commentContent());
+	}
+
+	@Test
+	void createComment_withNullContent_sanitizesToEmpty() {
+		Comment saved = new Comment("user1", "bacaan1", "root", "");
+		saved.setId("comment-1");
+		saved.setCreatedAt(LocalDateTime.now(fixedClock));
+
+		when(mockRepo.save(any(Comment.class))).thenReturn(saved);
+
+		CommentCreatedEvent result = service.createComment("user1", "bacaan1", null, null);
+
+		assertNotNull(result);
+		verify(mockRepo).save(argThat(c -> "".equals(c.getContent())));
+	}
+
+	@Test
+	void listCommentsTree_filterByBacaanId_shouldReturnFilteredTree() {
+		Comment root = new Comment("user1", "bacaan1", "root", "Root");
+		root.setId("root-1");
+		root.setCreatedAt(LocalDateTime.now(fixedClock));
+
+		when(mockRepo.findByBacaanId("bacaan1")).thenReturn(List.of(root));
+
+		List<CommentTreeResponse> trees = service.listCommentsTree("bacaan1");
+
+		assertEquals(1, trees.size());
+		assertEquals("root-1", trees.getFirst().id());
+	}
+
+	@Test
+	void addReaction_withNullReactionType_recordsUnknownMetric() {
+		Comment comment = new Comment("user1", "bacaan1", "content");
+		comment.setId("c1");
+
+		when(mockRepo.findById("c1")).thenReturn(Optional.of(comment));
+
+		service.addReaction("c1", "user2", null);
+
+		verify(mockRepo).addReaction("c1", "user2", null);
+		assertEquals(1.0, meterRegistry.counter("yomu_forum_comment_reactions_total",
+			"reaction_type", "unknown", "outcome", "success").count());
+	}
+
+	@Test
+	void addReaction_withBlankReactionType_recordsUnknownMetric() {
+		Comment comment = new Comment("user1", "bacaan1", "content");
+		comment.setId("c1");
+
+		when(mockRepo.findById("c1")).thenReturn(Optional.of(comment));
+
+		service.addReaction("c1", "user2", "  ");
+
+		verify(mockRepo).addReaction("c1", "user2", "  ");
+		assertEquals(1.0, meterRegistry.counter("yomu_forum_comment_reactions_total",
+			"reaction_type", "unknown", "outcome", "success").count());
 	}
 
 	static class RabbitTemplateStub extends org.springframework.amqp.rabbit.core.RabbitTemplate {

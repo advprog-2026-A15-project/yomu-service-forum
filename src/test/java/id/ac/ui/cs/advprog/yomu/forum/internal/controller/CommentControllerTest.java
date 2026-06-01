@@ -241,6 +241,94 @@ class CommentControllerTest {
         assertEquals("comment-1", result.commentId());
     }
 
+    @Test
+    void createCommentWithNullPrincipalThrowsUnauthorized() {
+        org.springframework.security.authentication.UsernamePasswordAuthenticationToken authNullPrincipal =
+            new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                null, null, java.util.List.of());
+
+        ResponseStatusException exception = assertThrows(
+            ResponseStatusException.class,
+            () -> controller.createComment(
+                new CreateCommentRequest("bacaan-1", "Test", "root"),
+                authNullPrincipal
+            )
+        );
+
+        assertEquals(HttpStatus.UNAUTHORIZED, exception.getStatusCode());
+    }
+
+    @Test
+    void updateCommentWithoutAuthenticationThrowsUnauthorized() {
+        ResponseStatusException exception = assertThrows(
+            ResponseStatusException.class,
+            () -> controller.updateComment(
+                "comment-1",
+                new UpdateCommentRequest("Edited"),
+                null
+            )
+        );
+
+        assertEquals(HttpStatus.UNAUTHORIZED, exception.getStatusCode());
+    }
+
+    @Test
+    void getCommentsTreeReturnsServiceData() {
+        id.ac.ui.cs.advprog.yomu.forum.internal.service.CommentTreeResponse tree =
+            new id.ac.ui.cs.advprog.yomu.forum.internal.service.CommentTreeResponse(
+                "comment-1", "user-1", null, null, "bacaan-1", "root",
+                "Content", java.time.Instant.now(), 0, 0, 0, 0, 0, 0, 0, java.util.List.of()
+            );
+        when(commentService.listCommentsTree("bacaan-1")).thenReturn(java.util.List.of(tree));
+
+        var result = controller.getCommentsTree("bacaan-1");
+
+        assertEquals(1, result.size());
+        assertEquals("comment-1", result.getFirst().id());
+    }
+
+    @Test
+    void updateCommentWithNoRolePassesNullRoleToService() {
+        CommentUpdatedEvent event = new CommentUpdatedEvent(
+            "user-1", "bacaan-1", "root", "comment-1", "Edited", Instant.now()
+        );
+        when(commentService.updateComment("comment-1", "Edited", "user-1", null))
+            .thenReturn(event);
+
+        CommentUpdatedEvent result = controller.updateComment(
+            "comment-1",
+            new UpdateCommentRequest("Edited"),
+            auth("user-1")
+        );
+
+        verify(commentService).updateComment("comment-1", "Edited", "user-1", null);
+        assertEquals("Edited", result.commentContent());
+    }
+
+    @Test
+    void deleteCommentWithRolePassesRoleToService() {
+        CommentDeletedEvent event = new CommentDeletedEvent(
+            "user-1", "bacaan-1", "root", "comment-1", "Content", Instant.now()
+        );
+        when(commentService.deleteComment("comment-1", "user-1", "USER"))
+            .thenReturn(event);
+
+        CommentDeletedEvent result = controller.deleteComment("comment-1", authWithRole("user-1", "USER"));
+
+        verify(commentService).deleteComment("comment-1", "user-1", "USER");
+        assertEquals("comment-1", result.commentId());
+    }
+
+    @Test
+    void addReactionWithoutAuthenticationThrowsUnauthorized() {
+        ResponseStatusException exception = assertThrows(
+            ResponseStatusException.class,
+            () -> controller.addReaction("comment-1", new ReactionRequest("upvote"), null)
+        );
+
+        assertEquals(HttpStatus.UNAUTHORIZED, exception.getStatusCode());
+    }
+
     private UsernamePasswordAuthenticationToken auth(String userId) {
         return new UsernamePasswordAuthenticationToken(userId, null, List.of());
     }
