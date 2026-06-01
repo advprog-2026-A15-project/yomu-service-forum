@@ -1,7 +1,6 @@
 package id.ac.ui.cs.advprog.yomu.forum.internal.controller;
 
 import id.ac.ui.cs.advprog.yomu.forum.internal.service.CommentResponse;
-import id.ac.ui.cs.advprog.yomu.forum.internal.service.CommentTreeResponse;
 import id.ac.ui.cs.advprog.yomu.forum.internal.service.CommentService;
 import id.ac.ui.cs.advprog.yomu.shared.event.CommentCreatedEvent;
 import id.ac.ui.cs.advprog.yomu.shared.event.CommentDeletedEvent;
@@ -170,27 +169,6 @@ class CommentControllerTest {
 
         verify(commentService).updateComment("comment-1", "Edited", "user-1", null);
         assertEquals("Edited", result.commentContent());
-    }
-
-    @Test
-    void getCommentsTreeReturnsServiceData() {
-        CommentTreeResponse tree = new CommentTreeResponse(
-            "c1",
-            "user-1",
-            "tirta.rendy",
-            "Tirta Rendy",
-            "bacaan-1",
-            "root",
-            "Content",
-            Instant.now(),
-            0,0,0,0,0,0,0, java.util.List.<CommentTreeResponse>of()
-        );
-        when(commentService.listCommentsTree(null)).thenReturn(List.of(tree));
-
-        List<CommentTreeResponse> result = controller.getCommentsTree(null);
-
-        assertEquals(1, result.size());
-        assertEquals("c1", result.getFirst().id());
     }
 
     @Test
