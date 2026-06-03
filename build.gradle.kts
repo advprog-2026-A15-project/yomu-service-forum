@@ -24,28 +24,30 @@ dependencyLocking {
     lockAllConfigurations()
 }
 
-dependencies {
-    compileOnly("org.projectlombok:lombok")
-    annotationProcessor("org.projectlombok:lombok")
-    testImplementation("org.springframework.boot:spring-boot-starter-test")
+val sharedLibVersion = "0.0.1-SNAPSHOT"
+val grpcStarterVersion = "3.1.0.RELEASE"
 
-    implementation("id.ac.ui.cs.advprog.yomu:shared-lib:0.0.1-SNAPSHOT")
+dependencies {
+    implementation("id.ac.ui.cs.advprog.yomu:shared-lib:$sharedLibVersion")
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-amqp")
     implementation("com.fasterxml.jackson.core:jackson-databind")
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
     implementation("org.springframework.boot:spring-boot-starter-security")
     implementation("org.springframework.boot:spring-boot-starter-validation")
-
     implementation("org.springframework.boot:spring-boot-starter-jdbc")
+    implementation("org.springframework.boot:spring-boot-starter-actuator")
+    implementation("io.micrometer:micrometer-registry-prometheus")
+    implementation("net.devh:grpc-server-spring-boot-starter:$grpcStarterVersion")
+    implementation("net.devh:grpc-client-spring-boot-starter:$grpcStarterVersion")
+
     runtimeOnly("com.h2database:h2")
     runtimeOnly("org.postgresql:postgresql")
 
-    implementation("org.springframework.boot:spring-boot-starter-actuator")
-    implementation("io.micrometer:micrometer-registry-prometheus")
-    // gRPC
-    implementation("net.devh:grpc-server-spring-boot-starter:3.1.0.RELEASE")
-    implementation("net.devh:grpc-client-spring-boot-starter:3.1.0.RELEASE")
+    compileOnly("org.projectlombok:lombok")
+    annotationProcessor("org.projectlombok:lombok")
+
+    testImplementation("org.springframework.boot:spring-boot-starter-test")
 }
 
 tasks.withType<Test> {
