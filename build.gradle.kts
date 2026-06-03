@@ -91,6 +91,11 @@ sonar {
 
 tasks.jacocoTestCoverageVerification {
     dependsOn(tasks.jacocoTestReport)
+    classDirectories.setFrom(
+        sourceSets.main.get().output.classesDirs.files.map { dir ->
+            fileTree(dir) { exclude(jacocoCoverageExcludes) }
+        },
+    )
     violationRules {
         rule {
             limit {
