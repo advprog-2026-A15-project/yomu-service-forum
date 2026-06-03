@@ -95,7 +95,7 @@ public class CommentController {
 	}
 
 	private String authenticatedUserId(Authentication auth) {
-	        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+	        if (auth == null || !auth.isAuthenticated() || auth.getPrincipal() == null || "anonymousUser".equals(auth.getPrincipal())) {
 	                throw new org.springframework.web.server.ResponseStatusException(
 	                        HttpStatus.UNAUTHORIZED,
 	                        "User tidak terautentikasi"
