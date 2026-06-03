@@ -109,8 +109,8 @@ public class CommentServiceImpl implements CommentService {
 			Instant timestamp = clock.instant();
 			String sanitizedContent = sanitize(commentContent);
 			commentRepository.updateContentById(commentId, sanitizedContent);
-			String safeCommentId = commentId != null ? commentId.replaceAll("[\r\n]", "") : "";
-			String safeUserId = userId != null ? userId.replaceAll("[\r\n]", "") : "";
+			String safeCommentId = commentId != null ? commentId.replaceAll("[^a-zA-Z0-9-]", "") : "";
+			String safeUserId = userId != null ? userId.replaceAll("[^a-zA-Z0-9-]", "") : "";
 			log.info(
 				"Moderation update on comment {} by user {} as {}",
 				safeCommentId,
@@ -153,8 +153,8 @@ public class CommentServiceImpl implements CommentService {
 
 			Instant timestamp = clock.instant();
 			commentRepository.deleteById(commentId);
-			String safeCommentId = commentId != null ? commentId.replaceAll("[\r\n]", "") : "";
-			String safeUserId = userId != null ? userId.replaceAll("[\r\n]", "") : "";
+			String safeCommentId = commentId != null ? commentId.replaceAll("[^a-zA-Z0-9-]", "") : "";
+			String safeUserId = userId != null ? userId.replaceAll("[^a-zA-Z0-9-]", "") : "";
 			log.info(
 				"Moderation delete on comment {} by user {} as {}",
 				safeCommentId,
