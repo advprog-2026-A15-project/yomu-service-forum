@@ -109,10 +109,12 @@ public class CommentServiceImpl implements CommentService {
 			Instant timestamp = clock.instant();
 			String sanitizedContent = sanitize(commentContent);
 			commentRepository.updateContentById(commentId, sanitizedContent);
+			String safeCommentId = commentId != null ? commentId.replaceAll("[\r\n]", "") : "";
+			String safeUserId = userId != null ? userId.replaceAll("[\r\n]", "") : "";
 			log.info(
 				"Moderation update on comment {} by user {} as {}",
-				commentId,
-				userId,
+				safeCommentId,
+				safeUserId,
 				isAdmin(role) ? "admin" : "author"
 			);
 
@@ -151,10 +153,12 @@ public class CommentServiceImpl implements CommentService {
 
 			Instant timestamp = clock.instant();
 			commentRepository.deleteById(commentId);
+			String safeCommentId = commentId != null ? commentId.replaceAll("[\r\n]", "") : "";
+			String safeUserId = userId != null ? userId.replaceAll("[\r\n]", "") : "";
 			log.info(
 				"Moderation delete on comment {} by user {} as {}",
-				commentId,
-				userId,
+				safeCommentId,
+				safeUserId,
 				isAdmin(role) ? "admin" : "author"
 			);
 
