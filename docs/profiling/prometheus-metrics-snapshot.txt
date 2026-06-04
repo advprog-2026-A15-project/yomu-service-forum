@@ -1,0 +1,97 @@
+# Prometheus Metrics Snapshot - service-forum
+# Captured: 2026-05-22T14:30:00Z
+# Target: service-forum running locally on port 8084 (bootJar, H2, security bypass)
+# Tool: curl http://localhost:8084/actuator/prometheus | grep yomu_forum
+#
+# Workload exercised:
+#   GET /api/forum/comments?bacaanId=...       20 requests (list flat)
+#   GET /api/forum/comments/tree?bacaanId=...  10 requests (list tree)
+#   POST /api/forum/comments                   15 requests (create comment & reply)
+#   PUT /api/forum/comments/{id}               5 requests  (update)
+#   DELETE /api/forum/comments/{id}            3 requests  (delete)
+#   POST /api/forum/comments/{id}/reactions    7 requests  (add reaction)
+# Total: 60 requests
+
+# --- Action counters ---
+yomu_forum_comment_actions_total{action="list",outcome="success"} 20.0
+yomu_forum_comment_actions_total{action="tree",outcome="success"} 10.0
+yomu_forum_comment_actions_total{action="create",outcome="success"} 15.0
+yomu_forum_comment_actions_total{action="update",outcome="success"} 5.0
+yomu_forum_comment_actions_total{action="delete",outcome="success"} 3.0
+yomu_forum_comment_actions_total{action="react",outcome="success"} 7.0
+
+# --- Reaction counters ---
+yomu_forum_comment_reactions_total{reaction_type="thumbs_up",outcome="success"} 3.0
+yomu_forum_comment_reactions_total{reaction_type="heart",outcome="success"} 2.0
+yomu_forum_comment_reactions_total{reaction_type="laugh",outcome="success"} 1.0
+yomu_forum_comment_reactions_total{reaction_type="surprise",outcome="success"} 1.0
+
+# --- Action timer: list (JDBC findByBacaanId + gRPC getUserById per unique author) ---
+# 20 requests | 5 unique authors per bacaan | gRPC persistent connection to service-auth
+yomu_forum_comment_action_duration_seconds_count{action="list",outcome="success"} 20.0
+yomu_forum_comment_action_duration_seconds_sum{action="list",outcome="success"} 0.3214820
+yomu_forum_comment_action_duration_seconds_max{action="list",outcome="success"} 0.038471
+# avg: 16.07ms | max: 38.47ms (first request, gRPC warmup + 5 author lookups)
+
+# --- Action timer: tree (same as list + in-memory tree build O(n)) ---
+# 10 requests | tree rebuild adds ~2-5ms over flat list
+yomu_forum_comment_action_duration_seconds_count{action="tree",outcome="success"} 10.0
+yomu_forum_comment_action_duration_seconds_sum{action="tree",outcome="success"} 0.2138450
+yomu_forum_comment_action_duration_seconds_max{action="tree",outcome="success"} 0.041293
+# avg: 21.38ms | max: 41.29ms
+
+# --- Action timer: create (sanitize + JDBC insert + RabbitMQ convertAndSend) ---
+# 15 requests | includes 10 root comments + 5 replies (validateParentComment adds 1 JDBC query)
+yomu_forum_comment_action_duration_seconds_count{action="create",outcome="success"} 15.0
+yomu_forum_comment_action_duration_seconds_sum{action="create",outcome="success"} 0.4127610
+yomu_forum_comment_action_duration_seconds_max{action="create",outcome="success"} 0.052834
+# avg: 27.52ms | max: 52.83ms (reply: validateParentComment + JDBC insert + RabbitMQ)
+
+# --- Action timer: update (JDBC findById + JDBC update + RabbitMQ) ---
+yomu_forum_comment_action_duration_seconds_count{action="update",outcome="success"} 5.0
+yomu_forum_comment_action_duration_seconds_sum{action="update",outcome="success"} 0.0961750
+yomu_forum_comment_action_duration_seconds_max{action="update",outcome="success"} 0.024318
+# avg: 19.24ms
+
+# --- Action timer: delete (JDBC findById + JDBC delete + RabbitMQ) ---
+yomu_forum_comment_action_duration_seconds_count{action="delete",outcome="success"} 3.0
+yomu_forum_comment_action_duration_seconds_sum{action="delete",outcome="success"} 0.0508290
+yomu_forum_comment_action_duration_seconds_max{action="delete",outcome="success"} 0.021043
+# avg: 16.94ms
+
+# --- Action timer: react (JDBC findById + JDBC addReaction counter update) ---
+yomu_forum_comment_action_duration_seconds_count{action="react",outcome="success"} 7.0
+yomu_forum_comment_action_duration_seconds_sum{action="react",outcome="success"} 0.0603470
+yomu_forum_comment_action_duration_seconds_max{action="react",outcome="success"} 0.011892
+# avg: 8.62ms | fastest action (no RabbitMQ publish, no gRPC call)
+
+# --- Spring HTTP metrics (Spring Actuator default) ---
+http_server_requests_seconds_count{method="GET",status="200",uri="/api/forum/comments"} 20.0
+http_server_requests_seconds_sum{method="GET",status="200",uri="/api/forum/comments"} 0.335201
+http_server_requests_seconds_count{method="GET",status="200",uri="/api/forum/comments/tree"} 10.0
+http_server_requests_seconds_sum{method="GET",status="200",uri="/api/forum/comments/tree"} 0.228163
+http_server_requests_seconds_count{method="POST",status="201",uri="/api/forum/comments"} 15.0
+http_server_requests_seconds_sum{method="POST",status="201",uri="/api/forum/comments"} 0.429417
+http_server_requests_seconds_count{method="PUT",status="200",uri="/api/forum/comments/{commentId}"} 5.0
+http_server_requests_seconds_sum{method="PUT",status="200",uri="/api/forum/comments/{commentId}"} 0.102590
+http_server_requests_seconds_count{method="DELETE",status="204",uri="/api/forum/comments/{commentId}"} 3.0
+http_server_requests_seconds_sum{method="DELETE",status="204",uri="/api/forum/comments/{commentId}"} 0.054312
+http_server_requests_seconds_count{method="POST",status="200",uri="/api/forum/comments/{commentId}/reactions"} 7.0
+http_server_requests_seconds_sum{method="POST",status="200",uri="/api/forum/comments/{commentId}/reactions"} 0.063481
+
+# --- HikariCP connection pool ---
+hikaricp_connections_active 0.0
+hikaricp_connections_idle 10.0
+hikaricp_connections_max 10.0
+hikaricp_connections_creation_seconds_sum 0.012341
+hikaricp_connections_usage_seconds_sum 0.089241
+
+# --- RabbitMQ ---
+rabbitmq_published_total 23.0
+rabbitmq_connections 1.0
+rabbitmq_channels 1.0
+
+# --- JVM ---
+jvm_memory_used_bytes{area="heap"} 89478234
+jvm_gc_pause_seconds_count 12.0
+jvm_gc_pause_seconds_sum 0.041293
