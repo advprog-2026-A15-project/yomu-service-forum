@@ -2,7 +2,6 @@ package id.ac.ui.cs.advprog.yomu.forum.internal.service;
 
 import id.ac.ui.cs.advprog.yomu.forum.internal.model.Comment;
 import id.ac.ui.cs.advprog.yomu.forum.internal.repository.CommentRepository;
-import id.ac.ui.cs.advprog.yomu.forum.internal.service.CommentTreeResponse;
 import id.ac.ui.cs.advprog.yomu.shared.event.CommentCreatedEvent;
 import id.ac.ui.cs.advprog.yomu.shared.event.CommentDeletedEvent;
 import id.ac.ui.cs.advprog.yomu.shared.event.CommentUpdatedEvent;

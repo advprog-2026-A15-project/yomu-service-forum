@@ -11,7 +11,7 @@ public record CommentTreeResponse(
 		String bacaanId,
 		String parentComment,
 		String content,
-		java.time.Instant createdAt,
+		Instant createdAt,
 		int upvotes,
 		int downvotes,
 		int thumbsUp,
@@ -19,5 +19,5 @@ public record CommentTreeResponse(
 		int laugh,
 		int surprise,
 		int sad,
-		java.util.List<CommentTreeResponse> replies) {
+		List<CommentTreeResponse> replies) {
 }

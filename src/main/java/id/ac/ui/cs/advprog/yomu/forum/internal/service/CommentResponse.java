@@ -10,7 +10,7 @@ public record CommentResponse(
 		String bacaanId,
 		String parentComment,
 		String content,
-		java.time.Instant createdAt,
+		Instant createdAt,
 		int upvotes,
 		int downvotes,
 		int thumbsUp,
